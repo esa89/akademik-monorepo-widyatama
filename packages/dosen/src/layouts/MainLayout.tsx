@@ -3,6 +3,7 @@ import { GraduationCap, UserCheck, User2 } from "lucide-react";
 import { useState } from "react";
 import Sidebar from "@/components/navbar/Sidebar";
 import { Outlet } from "react-router-dom";
+import RightSidebar from "@/components/navbar/RightSidebar";
 
 export default function MainLayout() {
   const [tab, setTab] = useState("perkuliahan");
@@ -25,9 +26,12 @@ export default function MainLayout() {
             icon: <User2 className="w-6 h-6 text-gray-700" />,
           }}
         />
-        <div className="p-6 flex-1 overflow-y-auto">
+        <div className="p-6 flex-1 overflow-y-auto h-[calc(100vh-4rem)] scrollbar-hide">
           <Outlet />
         </div>
+      </div>
+      <div className="hidden lg:block">
+        <RightSidebar />
       </div>
     </div>
   );

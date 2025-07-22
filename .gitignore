@@ -4,7 +4,7 @@ node_modules/
 .pnpm-debug.log
 
 # turborepo cache
-turbo/
+.turbo/
 
 # builds
 dist/

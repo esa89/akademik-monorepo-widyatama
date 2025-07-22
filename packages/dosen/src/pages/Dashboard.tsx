@@ -2,7 +2,6 @@ import { HiCheck } from "react-icons/hi";
 import { Button } from "@widyatama/ui";
 import { FaHandPaper } from "react-icons/fa";
 import StatCardKuliah from "@/components/cards/StatCardKuliah";
-import RightSidebar from "@/components/navbar/RightSidebar";
 import StatCardTotKuliah from "@/components/cards/StatCardTotKuliah";
 
 export default function Dashboard() {
@@ -112,12 +111,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* KONTEN KANAN */}
-      <div className="size-14 flex-none lg:w-[300px] shrink-0 mx-5">
-        <div className="sticky top-6">
-          <RightSidebar />
-        </div>
-      </div>
+      
     </div>
   );
 }
