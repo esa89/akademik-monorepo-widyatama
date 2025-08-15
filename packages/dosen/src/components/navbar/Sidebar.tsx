@@ -6,6 +6,8 @@ import {
   BookOpen,
   Settings,
   LogOut,
+  Monitor,
+  Notebook
 } from "lucide-react"
 import { useLocation, useNavigate } from "react-router-dom"
 
@@ -29,6 +31,8 @@ export default function Sidebar() {
     {
       group: "Lainnya",
       items: [
+        { key: "persiapan-kuliah", label: "Persiapan Kuliah", icon: <Notebook /> },
+        { key: "monitoring-TA", label: "Monitoring TA", icon: <Monitor /> },
         { key: "pengaturan", label: "Pengaturan", icon: <Settings /> },
       ],
     },
@@ -39,19 +43,21 @@ export default function Sidebar() {
   }
 
   return (
-    <WidyatamaSidebar
-      title="SYTAMA"
-      titleIcon={<LayoutDashboard />}
-      menu={menu}
-      activeKey={activeKey}
-      onMenuClick={handleMenuClick}
-      showFooter
-      footerLabel="Logout"
-      footerIcon={<LogOut />}
-      onFooterClick={() => {
-        console.log("Logout clicked")
-        // Tambahkan logika logout di sini jika perlu
-      }}
-    />
+    <div className="sticky">
+      <WidyatamaSidebar
+        title="SYTAMA"
+        titleIcon={<LayoutDashboard />}
+        menu={menu}
+        activeKey={activeKey}
+        onMenuClick={handleMenuClick}
+        showFooter
+        footerLabel="Logout"
+        footerIcon={<LogOut />}
+        onFooterClick={() => {
+          console.log("Logout clicked")
+          // Tambahkan logika logout di sini jika perlu
+        }}
+      />
+    </div>
   )
 }

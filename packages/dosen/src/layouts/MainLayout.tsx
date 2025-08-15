@@ -1,5 +1,5 @@
 import Header from "@/components/navbar/Header";
-import { GraduationCap, UserCheck, User2 } from "lucide-react";
+import { GraduationCap, UserCheck, User2, PersonStanding  } from "lucide-react";
 import { useState } from "react";
 import Sidebar from "@/components/navbar/Sidebar";
 import { Outlet } from "react-router-dom";
@@ -11,6 +11,7 @@ export default function MainLayout() {
   const tabs = [
     { key: "perkuliahan", label: "Perkuliahan", icon: <GraduationCap className="w-4 h-4" /> },
     { key: "perwalian", label: "Perwalian", icon: <UserCheck className="w-4 h-4" /> },
+    { key: "staff", label: "Staff", icon: <PersonStanding className="w-4 h-4" /> },
   ];
 
   return (

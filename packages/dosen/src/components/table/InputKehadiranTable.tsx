@@ -9,6 +9,7 @@ import {
   FaUsers,
 } from "react-icons/fa";
 import { Combobox, Input } from "@widyatama/ui";
+import { useNavigate } from "react-router-dom";
 
 type KehadiranStatus = true | false | null;
 
@@ -22,12 +23,12 @@ const dataMataKuliah: MataKuliah[] = [
   {
     kode: "ART101",
     nama: "Graphic Design Fundamentals",
-    kehadiran: [true, false, null, true, true],
+    kehadiran: [true, false, null],
   },
   {
     kode: "ART101",
     nama: "Digital Illustration",
-    kehadiran: [true, true, true, true, false],
+    kehadiran: [true, true, true],
   },
 ];
 
@@ -39,6 +40,7 @@ const semesterOptions = [
 export function InputKehadiranTable() {
   const [selectedSemester, setSelectedSemester] = useState("ganjil");
   const [searchTerm, setSearchTerm] = useState("");
+  const navigate = useNavigate();
 
   const handleClick = (action: string, detail?: unknown) => {
     console.log(`Clicked: ${action}`, detail);
@@ -124,7 +126,7 @@ export function InputKehadiranTable() {
                       {status === null && (
                         <button
                           title="Absensi belum diinputkan"
-                          onClick={() => handleClick("belum-input", { mk, i })}
+                          onClick={() => navigate(`/kehadiran/${mk.kode}/${i + 1}`)}
                         >
                           <FaEdit className="text-blue-700 mx-auto hover:text-blue-900" />
                         </button>
