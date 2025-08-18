@@ -1,0 +1,75 @@
+# Multi-stage Dockerfile for NestJS applications
+FROM node:18-alpine AS base
+WORKDIR /app
+
+# Install dependencies only when needed
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+
+# Install dependencies based on the preferred package manager
+COPY package.json pnpm-lock.yaml* ./
+COPY packages/sso-types/package.json ./packages/sso-types/
+COPY packages/sso-core/package.json ./packages/sso-core/
+ARG APP_NAME
+COPY apps/${APP_NAME}/package.json ./apps/${APP_NAME}/
+
+RUN \
+  if [ -f pnpm-lock.yaml ]; then \
+    corepack enable pnpm && pnpm install --frozen-lockfile; \
+  else \
+    echo "Lockfile not found." && exit 1; \
+  fi
+
+# Development stage
+FROM base AS development
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+ARG APP_NAME
+EXPOSE 3000
+
+CMD ["sh", "-c", "corepack enable pnpm && pnpm dev --filter=${APP_NAME}"]
+
+# Build stage
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+ARG APP_NAME
+
+# Build shared packages first
+RUN corepack enable pnpm && pnpm build --filter=@widyatama/sso-types
+RUN corepack enable pnpm && pnpm build --filter=@widyatama/sso-core
+
+# Build the specific app
+RUN corepack enable pnpm && pnpm build --filter=${APP_NAME}
+
+# Production stage
+FROM node:18-alpine AS production
+WORKDIR /app
+
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
+
+# Create app user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nestjs
+
+ARG APP_NAME
+
+# Copy built application
+COPY --from=builder --chown=nestjs:nodejs /app/apps/${APP_NAME}/dist ./dist
+COPY --from=builder --chown=nestjs:nodejs /app/apps/${APP_NAME}/package*.json ./
+COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
+
+USER nestjs
+
+EXPOSE 3000
+
+ENV NODE_ENV production
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "dist/main.js"]

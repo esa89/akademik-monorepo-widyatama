@@ -1,0 +1,47 @@
+# Traefik Static Configuration
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+serversTransport:
+  insecureSkipVerify: true
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entrypoint:
+          to: websecure
+          scheme: https
+          permanent: true
+
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: akademik-network
+  
+  file:
+    directory: /dynamic
+    watch: true
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: admin@widyatama.ac.id
+      storage: /letsencrypt/acme.json
+      keyType: EC256
+      tlsChallenge: {}
+
+api:
+  dashboard: true
+  debug: true
+
+log:
+  level: INFO
+  
+accessLog: {}

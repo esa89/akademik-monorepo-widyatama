@@ -1,0 +1,90 @@
+api:
+  static:
+    - url: api-nilai.widyatama.ac.id
+      paths:
+        - path: /
+          backends:
+            - url: http://api-nilai:3000
+    - url: api-kehadiran.widyatama.ac.id
+      paths:
+        - path: /
+          backends:
+            - url: http://api-kehadiran:3000
+    - url: api-identity.widyatama.ac.id
+      paths:
+        - path: /
+          backends:
+            - url: http://api-identity:3000
+
+http:
+  routers:
+    # API Routers
+    api-nilai:
+      rule: "Host(`api-nilai.widyatama.ac.id`)"
+      service: api-nilai
+      tls:
+        certResolver: letsencrypt
+    
+    api-kehadiran:
+      rule: "Host(`api-kehadiran.widyatama.ac.id`)"
+      service: api-kehadiran
+      tls:
+        certResolver: letsencrypt
+    
+    api-identity:
+      rule: "Host(`api-identity.widyatama.ac.id`)"
+      service: api-identity
+      tls:
+        certResolver: letsencrypt
+
+    # Frontend Routers
+    fe-dosen:
+      rule: "Host(`dosen.widyatama.ac.id`)"
+      service: fe-dosen
+      tls:
+        certResolver: letsencrypt
+    
+    fe-mahasiswa:
+      rule: "Host(`mahasiswa.widyatama.ac.id`)"
+      service: fe-mahasiswa
+      tls:
+        certResolver: letsencrypt
+    
+    fe-akademik:
+      rule: "Host(`akademik.widyatama.ac.id`)"
+      service: fe-akademik
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    # API Services
+    api-nilai:
+      loadBalancer:
+        servers:
+          - url: "http://api-nilai:3000"
+    
+    api-kehadiran:
+      loadBalancer:
+        servers:
+          - url: "http://api-kehadiran:3000"
+    
+    api-identity:
+      loadBalancer:
+        servers:
+          - url: "http://api-identity:3000"
+
+    # Frontend Services
+    fe-dosen:
+      loadBalancer:
+        servers:
+          - url: "http://fe-dosen:3000"
+    
+    fe-mahasiswa:
+      loadBalancer:
+        servers:
+          - url: "http://fe-mahasiswa:3000"
+    
+    fe-akademik:
+      loadBalancer:
+        servers:
+          - url: "http://fe-akademik:3000"

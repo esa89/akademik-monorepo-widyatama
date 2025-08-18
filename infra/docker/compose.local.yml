@@ -1,0 +1,164 @@
+version: '3.8'
+
+services:
+  # Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: akademik_db
+      POSTGRES_USER: akademik_user
+      POSTGRES_PASSWORD: akademik_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    networks:
+      - akademik-network
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - akademik-network
+
+  # API Services
+  api-nilai:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.nest
+      args:
+        APP_NAME: api-nilai
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://akademik_user:akademik_pass@postgres:5432/akademik_db
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ../../apps/api-nilai:/app
+      - /app/node_modules
+    networks:
+      - akademik-network
+
+  api-kehadiran:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.nest
+      args:
+        APP_NAME: api-kehadiran
+    ports:
+      - "3002:3000"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://akademik_user:akademik_pass@postgres:5432/akademik_db
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ../../apps/api-kehadiran:/app
+      - /app/node_modules
+    networks:
+      - akademik-network
+
+  api-identity:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.nest
+      args:
+        APP_NAME: api-identity
+    ports:
+      - "3003:3000"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://akademik_user:akademik_pass@postgres:5432/akademik_db
+      - REDIS_URL=redis://redis:6379
+      - ZITADEL_ISSUER_URL=${ZITADEL_ISSUER_URL}
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ../../apps/api-identity:/app
+      - /app/node_modules
+    networks:
+      - akademik-network
+
+  # Frontend Services
+  fe-dosen:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.next
+      args:
+        APP_NAME: fe-dosen
+    ports:
+      - "3010:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXTAUTH_URL=http://localhost:3010
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - ZITADEL_ISSUER_URL=${ZITADEL_ISSUER_URL}
+      - ZITADEL_CLIENT_ID=${ZITADEL_CLIENT_ID}
+      - ZITADEL_CLIENT_SECRET=${ZITADEL_CLIENT_SECRET}
+    volumes:
+      - ../../apps/fe-dosen:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - akademik-network
+
+  fe-mahasiswa:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.next
+      args:
+        APP_NAME: fe-mahasiswa
+    ports:
+      - "3011:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXTAUTH_URL=http://localhost:3011
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - ZITADEL_ISSUER_URL=${ZITADEL_ISSUER_URL}
+      - ZITADEL_CLIENT_ID=${ZITADEL_CLIENT_ID}
+      - ZITADEL_CLIENT_SECRET=${ZITADEL_CLIENT_SECRET}
+    volumes:
+      - ../../apps/fe-mahasiswa:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - akademik-network
+
+  fe-akademik:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.next
+      args:
+        APP_NAME: fe-akademik
+    ports:
+      - "3012:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXTAUTH_URL=http://localhost:3012
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - ZITADEL_ISSUER_URL=${ZITADEL_ISSUER_URL}
+      - ZITADEL_CLIENT_ID=${ZITADEL_CLIENT_ID}
+      - ZITADEL_CLIENT_SECRET=${ZITADEL_CLIENT_SECRET}
+    volumes:
+      - ../../apps/fe-akademik:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - akademik-network
+
+volumes:
+  postgres_data:
+
+networks:
+  akademik-network:
+    driver: bridge

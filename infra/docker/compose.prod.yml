@@ -1,0 +1,203 @@
+version: '3.8'
+
+services:
+  # Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - akademik-network
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - akademik-network
+
+  # API Services
+  api-nilai:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.nest
+      target: production
+      args:
+        APP_NAME: api-nilai
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - akademik-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api-nilai.rule=Host(`api-nilai.widyatama.ac.id`)"
+      - "traefik.http.routers.api-nilai.tls=true"
+      - "traefik.http.routers.api-nilai.tls.certresolver=letsencrypt"
+
+  api-kehadiran:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.nest
+      target: production
+      args:
+        APP_NAME: api-kehadiran
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - akademik-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api-kehadiran.rule=Host(`api-kehadiran.widyatama.ac.id`)"
+      - "traefik.http.routers.api-kehadiran.tls=true"
+      - "traefik.http.routers.api-kehadiran.tls.certresolver=letsencrypt"
+
+  api-identity:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.nest
+      target: production
+      args:
+        APP_NAME: api-identity
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - ZITADEL_ISSUER_URL=${ZITADEL_ISSUER_URL}
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - akademik-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api-identity.rule=Host(`api-identity.widyatama.ac.id`)"
+      - "traefik.http.routers.api-identity.tls=true"
+      - "traefik.http.routers.api-identity.tls.certresolver=letsencrypt"
+
+  # Frontend Services
+  fe-dosen:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.next
+      target: production
+      args:
+        APP_NAME: fe-dosen
+    environment:
+      - NODE_ENV=production
+      - NEXTAUTH_URL=https://dosen.widyatama.ac.id
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - ZITADEL_ISSUER_URL=${ZITADEL_ISSUER_URL}
+      - ZITADEL_CLIENT_ID=${ZITADEL_CLIENT_ID_DOSEN}
+      - ZITADEL_CLIENT_SECRET=${ZITADEL_CLIENT_SECRET_DOSEN}
+    restart: unless-stopped
+    networks:
+      - akademik-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fe-dosen.rule=Host(`dosen.widyatama.ac.id`)"
+      - "traefik.http.routers.fe-dosen.tls=true"
+      - "traefik.http.routers.fe-dosen.tls.certresolver=letsencrypt"
+
+  fe-mahasiswa:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.next
+      target: production
+      args:
+        APP_NAME: fe-mahasiswa
+    environment:
+      - NODE_ENV=production
+      - NEXTAUTH_URL=https://mahasiswa.widyatama.ac.id
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - ZITADEL_ISSUER_URL=${ZITADEL_ISSUER_URL}
+      - ZITADEL_CLIENT_ID=${ZITADEL_CLIENT_ID_MAHASISWA}
+      - ZITADEL_CLIENT_SECRET=${ZITADEL_CLIENT_SECRET_MAHASISWA}
+    restart: unless-stopped
+    networks:
+      - akademik-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fe-mahasiswa.rule=Host(`mahasiswa.widyatama.ac.id`)"
+      - "traefik.http.routers.fe-mahasiswa.tls=true"
+      - "traefik.http.routers.fe-mahasiswa.tls.certresolver=letsencrypt"
+
+  fe-akademik:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.next
+      target: production
+      args:
+        APP_NAME: fe-akademik
+    environment:
+      - NODE_ENV=production
+      - NEXTAUTH_URL=https://akademik.widyatama.ac.id
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - ZITADEL_ISSUER_URL=${ZITADEL_ISSUER_URL}
+      - ZITADEL_CLIENT_ID=${ZITADEL_CLIENT_ID_AKADEMIK}
+      - ZITADEL_CLIENT_SECRET=${ZITADEL_CLIENT_SECRET_AKADEMIK}
+    restart: unless-stopped
+    networks:
+      - akademik-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fe-akademik.rule=Host(`akademik.widyatama.ac.id`)"
+      - "traefik.http.routers.fe-akademik.tls=true"
+      - "traefik.http.routers.fe-akademik.tls.certresolver=letsencrypt"
+
+  # Reverse Proxy
+  traefik:
+    image: traefik:v3.0
+    command:
+      - --api.dashboard=true
+      - --api.debug=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.file.directory=/dynamic
+      - --providers.file.watch=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      - --certificatesresolvers.letsencrypt.acme.email=admin@widyatama.ac.id
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/dynamic:/dynamic:ro
+      - traefik_letsencrypt:/letsencrypt
+    networks:
+      - akademik-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.widyatama.ac.id`)"
+      - "traefik.http.routers.dashboard.tls=true"
+      - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.dashboard.service=api@internal"
+
+volumes:
+  postgres_data:
+  traefik_letsencrypt:
+
+networks:
+  akademik-network:
+    driver: bridge
