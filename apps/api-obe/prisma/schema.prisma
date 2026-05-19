@@ -1,0 +1,204 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CplCategory {
+  SIKAP
+  PENGETAHUAN
+  KETERAMPILAN_UMUM
+  KETERAMPILAN_KHUSUS
+}
+
+enum AssessmentType {
+  QUIZ
+  ASSIGNMENT
+  PRACTICUM
+  PROJECT
+  PRESENTATION
+  UTS
+  UAS
+  OTHER
+}
+
+model GraduateProfile {
+  id             String   @id @default(uuid())
+  code           String   @unique
+  name           String
+  description    String?
+  vision         String?
+  mission        String?
+  curriculumYear Int
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  cpls           Cpl[]
+
+  @@index([code])
+  @@index([name])
+  @@index([curriculumYear])
+  @@map("graduate_profiles")
+}
+
+model Cpl {
+  id                String           @id @default(uuid())
+  code              String           @unique
+  name              String
+  category          CplCategory
+  description       String?
+  curriculumYear    Int
+  isActive          Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  graduateProfileId String?
+  graduateProfile   GraduateProfile? @relation(fields: [graduateProfileId], references: [id], onDelete: SetNull)
+  cplMappings       CplBahanKajianMapping[]
+  cpmkMappings      CpmkCplMapping[]
+
+  @@index([code])
+  @@index([name])
+  @@index([category])
+  @@index([isActive])
+  @@index([curriculumYear])
+  @@index([graduateProfileId])
+  @@map("cpl")
+}
+
+model BahanKajian {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  curriculumYear Int
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  cplMappings CplBahanKajianMapping[]
+
+  @@index([code])
+  @@index([name])
+  @@index([curriculumYear])
+  @@map("bahan_kajian")
+}
+
+model CplBahanKajianMapping {
+  id            String      @id @default(uuid())
+  cplId         String
+  bahanKajianId String
+  createdAt     DateTime    @default(now())
+  cpl           Cpl         @relation(fields: [cplId], references: [id], onDelete: Cascade)
+  bahanKajian   BahanKajian @relation(fields: [bahanKajianId], references: [id], onDelete: Cascade)
+
+  @@unique([cplId, bahanKajianId])
+  @@index([cplId])
+  @@index([bahanKajianId])
+  @@map("cpl_bahan_kajian_mappings")
+}
+
+model Cpmk {
+  id           String           @id @default(uuid())
+  courseId     String
+  code         String
+  name         String
+  description  String?
+  orderNumber  Int
+  isActive     Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  cpmkMappings CpmkCplMapping[]
+  subCpmks     SubCpmk[]
+
+  @@unique([code, courseId])
+  @@index([code])
+  @@index([courseId])
+  @@index([orderNumber])
+  @@map("cpmk")
+}
+
+model SubCpmk {
+  id               String        @id @default(uuid())
+  cpmkId           String
+  code             String
+  name             String
+  description      String?
+  orderNumber      Int
+  targetPercentage Int
+  isActive         Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  cpmk             Cpmk          @relation(fields: [cpmkId], references: [id], onDelete: Cascade)
+  assessments      Assessment[]
+
+  @@unique([code, cpmkId])
+  @@index([code])
+  @@index([cpmkId])
+  @@index([orderNumber])
+  @@map("sub_cpmk")
+}
+
+model Assessment {
+  id          String         @id @default(uuid())
+  subCpmkId   String
+  code        String
+  name        String
+  description String?
+  type        AssessmentType
+  weight      Int
+  maxScore    Int
+  orderNumber Int
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  subCpmk     SubCpmk        @relation(fields: [subCpmkId], references: [id], onDelete: Cascade)
+  rubrics     Rubric[]
+
+  @@unique([code, subCpmkId])
+  @@index([code])
+  @@index([subCpmkId])
+  @@index([type])
+  @@index([orderNumber])
+  @@map("assessments")
+}
+
+model Rubric {
+  id          String     @id @default(uuid())
+  assessmentId String
+  code        String
+  name        String
+  description String?
+  weight      Int
+  maxScore    Int
+  orderNumber Int
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  assessment  Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@unique([code, assessmentId])
+  @@index([code])
+  @@index([assessmentId])
+  @@index([orderNumber])
+  @@map("rubrics")
+}
+
+model CpmkCplMapping {
+  id        String   @id @default(uuid())
+  cpmkId    String
+  cplId     String
+  weight    Int
+  createdAt DateTime @default(now())
+  cpmk      Cpmk     @relation(fields: [cpmkId], references: [id], onDelete: Cascade)
+  cpl       Cpl      @relation(fields: [cplId], references: [id], onDelete: Cascade)
+
+  @@unique([cpmkId, cplId])
+  @@index([cpmkId])
+  @@index([cplId])
+  @@map("cpmk_cpl_mappings")
+}

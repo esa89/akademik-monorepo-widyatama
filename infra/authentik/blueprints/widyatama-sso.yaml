@@ -1,0 +1,174 @@
+# Widyatama SSO Blueprint for Authentik
+# This blueprint configures the OAuth2 provider, application, groups, and test users
+
+version: 1
+metadata:
+  name: Widyatama SSO Configuration
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
+entries:
+  # Groups
+  - model: authentik_core.group
+    id: group-dosen
+    identifiers:
+      name: dosen
+    attrs:
+      name: dosen
+      is_superuser: false
+
+  - model: authentik_core.group
+    id: group-mahasiswa
+    identifiers:
+      name: mahasiswa
+    attrs:
+      name: mahasiswa
+      is_superuser: false
+
+  - model: authentik_core.group
+    id: group-admin-akademik
+    identifiers:
+      name: admin_akademik
+    attrs:
+      name: admin_akademik
+      is_superuser: false
+
+  - model: authentik_core.group
+    id: group-kaprodi
+    identifiers:
+      name: kaprodi
+    attrs:
+      name: kaprodi
+      is_superuser: false
+
+  # OAuth2 Provider
+  - model: authentik_providers_oauth2.oauth2provider
+    id: provider-widyatama
+    identifiers:
+      name: Widyatama SSO
+    attrs:
+      name: Widyatama SSO
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-explicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      client_type: confidential
+      client_id: fe-dosen
+      client_secret: widyatama-client-secret-change-me-in-production
+      redirect_uris:
+        - url: http://localhost:6173/auth/callback
+          matching_mode: strict
+        - url: http://localhost:5174/auth/callback
+          matching_mode: strict
+      allowed_origins:
+        - http://localhost:6173
+        - http://localhost:5174
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      access_token_validity: minutes=10
+      refresh_token_validity: days=30
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, email]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, offline_access]]
+
+  # OAuth2 Provider for fe-identity
+  - model: authentik_providers_oauth2.oauth2provider
+    id: provider-fe-identity
+    identifiers:
+      name: Widyatama Identity
+    attrs:
+      name: Widyatama Identity
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-explicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      client_type: confidential
+      client_id: fe-identity
+      client_secret: widyatama-client-secret-change-me-in-production
+      redirect_uris:
+        - url: http://localhost:5174/auth/callback
+          matching_mode: strict
+      allowed_origins:
+        - http://localhost:5174
+        - http://localhost:6173
+      # Enable password grant for direct API authentication
+      grant_types:
+        - authorization_code
+        - refresh_token
+        - password
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      access_token_validity: minutes=10
+      refresh_token_validity: days=30
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, email]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, offline_access]]
+
+  # Application for fe-dosen
+  - model: authentik_core.application
+    id: app-fe-dosen
+    identifiers:
+      slug: widyatama
+    attrs:
+      name: Widyatama Portal
+      slug: widyatama
+      provider: !KeyOf provider-widyatama
+      meta_launch_url: http://localhost:6173
+      open_in_new_tab: false
+
+  # Application for fe-identity
+  - model: authentik_core.application
+    id: app-fe-identity
+    identifiers:
+      slug: widyatama-identity
+    attrs:
+      name: Widyatama Identity Portal
+      slug: widyatama-identity
+      provider: !KeyOf provider-fe-identity
+      meta_launch_url: http://localhost:5174
+      open_in_new_tab: false
+
+  # Test User - Dosen
+  - model: authentik_core.user
+    id: user-dosen-test
+    identifiers:
+      username: dosen.test
+    attrs:
+      username: dosen.test
+      email: dosen.test@widyatama.ac.id
+      name: Dosen Test
+      type: internal
+      groups:
+        - !KeyOf group-dosen
+      attributes:
+        settings:
+          locale: id
+
+  # Test User - Mahasiswa
+  - model: authentik_core.user
+    id: user-mahasiswa-test
+    identifiers:
+      username: mahasiswa.test
+    attrs:
+      username: mahasiswa.test
+      email: mahasiswa.test@widyatama.ac.id
+      name: Mahasiswa Test
+      type: internal
+      groups:
+        - !KeyOf group-mahasiswa
+      attributes:
+        settings:
+          locale: id
+
+  # Test User - Admin Akademik
+  - model: authentik_core.user
+    id: user-admin-test
+    identifiers:
+      username: admin.akademik
+    attrs:
+      username: admin.akademik
+      email: admin.akademik@widyatama.ac.id
+      name: Admin Akademik
+      type: internal
+      groups:
+        - !KeyOf group-admin-akademik
+      attributes:
+        settings:
+          locale: id

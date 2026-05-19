@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DataTable, type DataTableOptions, type Header } from "@widyatama/ui";
-import { Pencil, CheckCircle, Download } from "lucide-react";
+import { Pencil, CheckCircle, Download, BarChart3 } from "lucide-react";
 
 // Tipe data untuk item laporan nilai
 export type LaporanNilaiItem = {
@@ -95,6 +95,17 @@ export default function LaporanNilai() {
         ) : (
           <span className="text-gray-400">–</span>
         ),
+    },
+    {
+      key: "kode" as keyof LaporanNilaiItem,
+      title: "OBE",
+      render: (item) => (
+        <BarChart3
+          className="text-indigo-600 cursor-pointer hover:text-indigo-800 transition-colors"
+          size={18}
+          onClick={() => navigate(`/nilai/obe/${item.kode}`)}
+        />
+      ),
     },
   ];
 

@@ -1,0 +1,32 @@
+# Dockerfile for Express-based API services
+# Supports api-identity
+
+FROM node:20-alpine AS base
+WORKDIR /app
+RUN npm install -g pnpm@10.12.4
+
+# Install dependencies stage - copy all workspace package.json for reliable install
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY apps/ ./apps/
+RUN find apps -type f ! -name 'package.json' -delete
+COPY packages/ ./packages/
+RUN find packages -type f ! -name 'package.json' -delete
+
+RUN pnpm install --frozen-lockfile
+
+# Development stage - runs with tsx watch
+FROM base AS development
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+ARG APP_NAME
+ENV APP_NAME=${APP_NAME}
+
+# Express server port
+EXPOSE 3000
+
+CMD ["sh", "-c", "cd apps/${APP_NAME} && npx tsx watch src/main.ts"]

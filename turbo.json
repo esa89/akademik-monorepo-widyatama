@@ -8,7 +8,8 @@
     },
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "env": ["DATABASE_URL", "NODE_ENV", "SWAGGER_ENABLED", "AUTHENTIK_URL", "AUTHENTIK_CLIENT_ID", "AUTHENTIK_CLIENT_SECRET", "FE_IDENTITY_URL"]
     },
     "lint": {
       "outputs": []

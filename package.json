@@ -6,7 +6,12 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
-    "lint": "turbo run lint"
+    "lint": "turbo run lint",
+    "docker": "docker compose -f infra/docker/docker-compose.yml --env-file infra/docker/.env up -d",
+    "docker:build": "docker compose -f infra/docker/docker-compose.yml --env-file infra/docker/.env build",
+    "docker:down": "docker compose -f infra/docker/docker-compose.yml --env-file infra/docker/.env down",
+    "docker:logs": "docker compose -f infra/docker/docker-compose.yml --env-file infra/docker/.env logs -f",
+    "docker:stop": "docker compose -f infra/docker/docker-compose.yml --env-file infra/docker/.env stop"
   },
   "devDependencies": {
     "turbo": "^2.0.0"

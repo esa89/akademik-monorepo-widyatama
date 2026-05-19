@@ -1,12 +1,21 @@
 {
   "name": "@widyatama/ui",
   "version": "1.0.2-beta.15",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "style": "dist/style.css",
   "files": [
     "dist"
   ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./style.css": "./dist/style.css"
+  },
   "license": "MIT",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
@@ -14,7 +23,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build && yarn build:css",
+    "build": "vite build && pnpm build:css",
     "build:css": "tailwindcss -i ./src/index.css -o ./dist/style.css --minify",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"

@@ -4,13 +4,14 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --port 6173",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@widyatama/ui": "1.0.2-beta.15",
+    "@widyatama/ui": "workspace:*",
+    "@widyatama/sso-react": "workspace:*",
     "lucide-react": "^0.525.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.1.0",

@@ -79,7 +79,7 @@ services:
       - NODE_ENV=production
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
-      - ZITADEL_ISSUER_URL=${ZITADEL_ISSUER_URL}
+      - AUTHENTIK_ISSUER_URL=${AUTHENTIK_ISSUER_URL}
     restart: unless-stopped
     depends_on:
       - postgres
@@ -102,11 +102,9 @@ services:
         APP_NAME: fe-dosen
     environment:
       - NODE_ENV=production
-      - NEXTAUTH_URL=https://dosen.widyatama.ac.id
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - ZITADEL_ISSUER_URL=${ZITADEL_ISSUER_URL}
-      - ZITADEL_CLIENT_ID=${ZITADEL_CLIENT_ID_DOSEN}
-      - ZITADEL_CLIENT_SECRET=${ZITADEL_CLIENT_SECRET_DOSEN}
+      - AUTHENTIK_ISSUER_URL=${AUTHENTIK_ISSUER_URL}
+      - AUTHENTIK_CLIENT_ID=${AUTHENTIK_CLIENT_ID_DOSEN}
+      - AUTHENTIK_CLIENT_SECRET=${AUTHENTIK_CLIENT_SECRET_DOSEN}
     restart: unless-stopped
     networks:
       - akademik-network
@@ -125,11 +123,9 @@ services:
         APP_NAME: fe-mahasiswa
     environment:
       - NODE_ENV=production
-      - NEXTAUTH_URL=https://mahasiswa.widyatama.ac.id
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - ZITADEL_ISSUER_URL=${ZITADEL_ISSUER_URL}
-      - ZITADEL_CLIENT_ID=${ZITADEL_CLIENT_ID_MAHASISWA}
-      - ZITADEL_CLIENT_SECRET=${ZITADEL_CLIENT_SECRET_MAHASISWA}
+      - AUTHENTIK_ISSUER_URL=${AUTHENTIK_ISSUER_URL}
+      - AUTHENTIK_CLIENT_ID=${AUTHENTIK_CLIENT_ID_MAHASISWA}
+      - AUTHENTIK_CLIENT_SECRET=${AUTHENTIK_CLIENT_SECRET_MAHASISWA}
     restart: unless-stopped
     networks:
       - akademik-network
@@ -142,17 +138,15 @@ services:
   fe-akademik:
     build:
       context: ../../
-      dockerfile: infra/docker/Dockerfile.next
+      dockerfile: infra/docker/Dockerfile.vite
       target: production
       args:
         APP_NAME: fe-akademik
     environment:
       - NODE_ENV=production
-      - NEXTAUTH_URL=https://akademik.widyatama.ac.id
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - ZITADEL_ISSUER_URL=${ZITADEL_ISSUER_URL}
-      - ZITADEL_CLIENT_ID=${ZITADEL_CLIENT_ID_AKADEMIK}
-      - ZITADEL_CLIENT_SECRET=${ZITADEL_CLIENT_SECRET_AKADEMIK}
+      - AUTHENTIK_ISSUER_URL=${AUTHENTIK_ISSUER_URL}
+      - AUTHENTIK_CLIENT_ID=${AUTHENTIK_CLIENT_ID_AKADEMIK}
+      - AUTHENTIK_CLIENT_SECRET=${AUTHENTIK_CLIENT_SECRET_AKADEMIK}
     restart: unless-stopped
     networks:
       - akademik-network

@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: authentik
+      POSTGRES_USER: authentik
+      POSTGRES_PASSWORD: ${PG_PASS:-authentik}
+    volumes:
+      - authentik_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d authentik -U authentik"]
+      interval: 10s
+      timeout: 30s
+      retries: 5
+      start_period: 20s
+    networks:
+      - akademik-network
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - akademik-network
+
+  server:
+    image: ghcr.io/goauthentik/server:2025.4
+    restart: unless-stopped
+    command: server
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-change-me-to-a-secure-key-at-least-50-chars}
+      AUTHENTIK_POSTGRESQL__HOST: postgres
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS:-authentik}
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+      # Bootstrap admin user (auto-created on first start)
+      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-admin-widyatama-2026}
+      AUTHENTIK_BOOTSTRAP_EMAIL: ${AUTHENTIK_BOOTSTRAP_EMAIL:-admin@widyatama.ac.id}
+      AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN:-widyatama-bootstrap-token-for-api}
+      # CORS settings for OIDC endpoints
+      AUTHENTIK_CORS__ENABLED: "true"
+      AUTHENTIK_CORS__ALLOWED_ORIGINS: "http://localhost:6173,http://localhost:5174,http://localhost:5175,http://localhost:9010"
+      AUTHENTIK_CORS__ALLOWED_METHODS: "GET,POST,OPTIONS"
+      AUTHENTIK_CORS__ALLOWED_HEADERS: "*"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "${AUTHENTIK_PORT_HTTP:-9000}:9000"
+      - "${AUTHENTIK_PORT_HTTPS:-9443}:9443"
+    volumes:
+      - authentik_media:/media
+      - authentik_templates:/templates
+      - ./blueprints:/blueprints
+    networks:
+      - akademik-network
+
+  worker:
+    image: ghcr.io/goauthentik/server:2025.4
+    restart: unless-stopped
+    command: worker
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-change-me-to-a-secure-key-at-least-50-chars}
+      AUTHENTIK_POSTGRESQL__HOST: postgres
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS:-authentik}
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - authentik_media:/media
+      - authentik_templates:/templates
+      - ./blueprints:/blueprints
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - akademik-network
+
+volumes:
+  authentik_pg_data:
+  authentik_media:
+  authentik_templates:
+
+networks:
+  akademik-network:
+    external: true

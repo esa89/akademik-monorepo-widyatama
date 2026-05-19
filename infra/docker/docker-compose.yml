@@ -1,0 +1,317 @@
+# =============================================================================
+# Widyatama Akademik - Unified Docker Compose
+# =============================================================================
+# Runs all services: Authentik, api-identity, api-akademik, api-obe, fe-dosen, fe-identity, fe-jurusan, fe-akademik
+#
+# Usage:
+#   cd infra/docker
+#   docker compose up -d
+#
+# Access URLs (localhost):
+#   - Authentik Admin:  http://localhost:9010
+#   - Authentik HTTPS:  https://localhost:9444
+#   - API Identity:     http://localhost:3013
+#   - API Akademik:     http://localhost:3015
+#   - API OBE:          http://localhost:3014
+#   - fe-dosen:         http://localhost:6173
+#   - fe-identity:      http://localhost:5174
+#   - fe-jurusan:       http://localhost:6174
+#   - fe-akademik:      http://localhost:6175
+#
+# Access URLs (nip.io aliases):
+#   - Authentik Admin:  http://auth.widyatama.127.0.0.1.nip.io:9010
+#   - API Identity:     http://api.widyatama.127.0.0.1.nip.io:3013
+#   - API Akademik:     http://api-akademik.widyatama.127.0.0.1.nip.io:3015
+#   - fe-dosen:         http://dosen.widyatama.127.0.0.1.nip.io:6173
+#   - fe-identity:      http://identity.widyatama.127.0.0.1.nip.io:5174
+#   - fe-jurusan:       http://jurusan.widyatama.127.0.0.1.nip.io:6174
+#   - fe-akademik:      http://akademik.widyatama.127.0.0.1.nip.io:6175
+#
+# Test Accounts:
+#   - dosen.test / TestPassword123!
+#   - admin.akademik / TestPassword123!
+#   - mahasiswa.test / TestPassword123!
+# =============================================================================
+
+name: widyatama-akademik
+
+services:
+  # ---------------------------------------------------------------------------
+  # Shared Infrastructure
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: authentik
+      POSTGRES_USER: authentik
+      POSTGRES_PASSWORD: ${PG_PASS:-authentik}
+    volumes:
+      - authentik_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d authentik -U authentik"]
+      interval: 10s
+      timeout: 30s
+      retries: 5
+      start_period: 20s
+    networks:
+      - akademik-network
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - akademik-network
+
+  # ---------------------------------------------------------------------------
+  # Authentik (Identity Provider)
+  # ---------------------------------------------------------------------------
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2025.4
+    restart: unless-stopped
+    command: server
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-change-me-to-a-secure-key-at-least-50-chars}
+      AUTHENTIK_POSTGRESQL__HOST: postgres
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS:-authentik}
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+      # CORS settings for OIDC endpoints
+      AUTHENTIK_CORS__ENABLED: "true"
+      AUTHENTIK_CORS__ALLOWED_ORIGINS: "http://localhost:6173,http://localhost:5174,http://localhost:5175,http://localhost:6174,http://localhost:6175,http://localhost:9010,http://dosen.widyatama.127.0.0.1.nip.io:6173,http://identity.widyatama.127.0.0.1.nip.io:5174,http://jurusan.widyatama.127.0.0.1.nip.io:6174,http://akademik.widyatama.127.0.0.1.nip.io:6175,http://api.widyatama.127.0.0.1.nip.io:3013"
+      AUTHENTIK_CORS__ALLOWED_METHODS: "GET,POST,OPTIONS"
+      AUTHENTIK_CORS__ALLOWED_HEADERS: "*"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "${AUTHENTIK_PORT_HTTP:-9010}:9000"
+      - "${AUTHENTIK_PORT_HTTPS:-9444}:9443"
+    volumes:
+      - authentik_media:/media
+      - authentik_templates:/templates
+      - ../authentik/blueprints:/blueprints
+    networks:
+      - akademik-network
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2025.4
+    restart: unless-stopped
+    command: worker
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-change-me-to-a-secure-key-at-least-50-chars}
+      AUTHENTIK_POSTGRESQL__HOST: postgres
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS:-authentik}
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - authentik_media:/media
+      - authentik_templates:/templates
+      - ../authentik/blueprints:/blueprints
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - akademik-network
+
+  # ---------------------------------------------------------------------------
+  # API Services
+  # ---------------------------------------------------------------------------
+  api-identity:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.nest
+      target: development
+      args:
+        APP_NAME: api-identity
+    ports:
+      - "3013:3013"
+    environment:
+      - AUTHENTIK_URL=http://authentik-server:9000
+      - AUTHENTIK_CLIENT_ID=fe-identity
+      - AUTHENTIK_CLIENT_SECRET=widyatama-client-secret-change-me-in-production
+      - FE_IDENTITY_URL=http://localhost:5174
+      - NODE_ENV=development
+    depends_on:
+      - authentik-server
+    volumes:
+      - ../../apps/api-identity:/app/apps/api-identity
+      - /app/node_modules
+    networks:
+      - akademik-network
+
+  api-akademik:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.nest
+      target: development
+      args:
+        APP_NAME: api-akademik
+    ports:
+      - "3015:3015"
+    environment:
+      - DATABASE_URL=postgresql://authentik:authentik@postgres:5432/systama_akademik?schema=public
+      - CORS_ORIGINS=http://localhost:6175,http://localhost:5174,http://localhost:6174,http://localhost:3000,http://akademik.widyatama.127.0.0.1.nip.io:6175,http://jurusan.widyatama.127.0.0.1.nip.io:6174
+      - NODE_ENV=development
+      - SWAGGER_ENABLED=true
+    depends_on:
+      - postgres
+    volumes:
+      - ../../apps/api-akademik:/app/apps/api-akademik
+      - /app/node_modules
+    networks:
+      - akademik-network
+    command: >
+      sh -c "cd /app/apps/api-akademik && npx prisma generate && npx prisma db push --accept-data-loss && npx nest start --watch"
+
+
+  api-obe:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.nest
+      target: development
+      args:
+        APP_NAME: api-obe
+    ports:
+      - "3014:3014"
+    environment:
+      - DATABASE_URL=postgresql://authentik:authentik@postgres:5432/systama_obe?schema=public
+      - CORS_ORIGINS=http://localhost:6174,http://localhost:3000,http://jurusan.widyatama.127.0.0.1.nip.io:6174
+      - NODE_ENV=development
+      - SWAGGER_ENABLED=true
+    depends_on:
+      - postgres
+    volumes:
+      - ../../apps/api-obe:/app/apps/api-obe
+      - /app/node_modules
+    networks:
+      - akademik-network
+    command: >
+      sh -c "cd /app/apps/api-obe && npx prisma generate && npx prisma db push --accept-data-loss && npx nest start --watch"
+
+  # ---------------------------------------------------------------------------
+  # Frontend Services (Vite)
+  # ---------------------------------------------------------------------------
+  fe-dosen:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.vite
+      target: development
+      args:
+        APP_NAME: fe-dosen
+    ports:
+      - "6173:6173"
+    environment:
+      - VITE_API_IDENTITY_URL=http://localhost:3013
+      - VITE_AUTHENTIK_ISSUER_URL=http://localhost:3013
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - api-identity
+      - authentik-server
+    volumes:
+      - ../../apps/fe-dosen:/app/apps/fe-dosen
+      - ../../packages:/app/packages
+      - /app/node_modules
+    networks:
+      - akademik-network
+    command: >
+      sh -c "pnpm install --frozen-lockfile && pnpm build --filter=@widyatama/ui --filter=@widyatama/sso-types --filter=@widyatama/sso-react && pnpm dev --filter=fe-dosen -- --host 0.0.0.0"
+
+  fe-identity:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.vite
+      target: development
+      args:
+        APP_NAME: fe-identity
+    ports:
+      - "5174:5174"
+    environment:
+      - VITE_API_IDENTITY_URL=http://localhost:3013
+      - VITE_AUTHENTIK_ISSUER_URL=http://localhost:3013
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - api-identity
+      - authentik-server
+    volumes:
+      - ../../apps/fe-identity:/app/apps/fe-identity
+      - ../../packages:/app/packages
+      - /app/node_modules
+    networks:
+      - akademik-network
+    command: >
+      sh -c "pnpm install --frozen-lockfile && pnpm build --filter=@widyatama/ui --filter=@widyatama/sso-types --filter=@widyatama/sso-react && pnpm dev --filter=fe-identity -- --host 0.0.0.0"
+
+  fe-jurusan:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.vite
+      target: development
+      args:
+        APP_NAME: fe-jurusan
+    ports:
+      - "6174:6174"
+    environment:
+      - VITE_API_OBE_URL=http://localhost:3014/api
+      - VITE_API_AKADEMIK_URL=http://localhost:3015/api
+      - VITE_API_IDENTITY_URL=http://localhost:3013
+      - VITE_AUTHENTIK_ISSUER_URL=http://localhost:3013
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - api-obe
+      - api-akademik
+      - api-identity
+      - authentik-server
+    volumes:
+      - ../../apps/fe-jurusan:/app/apps/fe-jurusan
+      - ../../packages:/app/packages
+      - /app/node_modules
+    networks:
+      - akademik-network
+    command: >
+      sh -c "pnpm install --frozen-lockfile && pnpm build --filter=@widyatama/ui --filter=@widyatama/sso-types --filter=@widyatama/sso-react && pnpm dev --filter=fe-jurusan -- --host 0.0.0.0"
+
+  fe-akademik:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.vite
+      target: development
+      args:
+        APP_NAME: fe-akademik
+    ports:
+      - "6175:6175"
+    environment:
+      - VITE_API_AKADEMIK_URL=http://localhost:3015/api
+      - VITE_API_IDENTITY_URL=http://localhost:3013
+      - VITE_AUTHENTIK_ISSUER_URL=http://localhost:3013
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - api-akademik
+      - api-identity
+      - authentik-server
+    volumes:
+      - ../../apps/fe-akademik:/app/apps/fe-akademik
+      - ../../packages:/app/packages
+      - /app/node_modules
+    networks:
+      - akademik-network
+    command: >
+      sh -c "pnpm install --frozen-lockfile && pnpm build --filter=@widyatama/ui --filter=@widyatama/sso-types --filter=@widyatama/sso-react && pnpm dev --filter=fe-akademik -- --host 0.0.0.0"
+
+volumes:
+  authentik_pg_data:
+  authentik_media:
+  authentik_templates:
+
+networks:
+  akademik-network:
+    driver: bridge

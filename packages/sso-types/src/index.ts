@@ -1,20 +1,22 @@
-// Token Claims from Zitadel
-export interface ZitadelTokenClaims {
-  sub: string; // user ID
+// Standard OIDC Token Claims (Authentik-compatible)
+export interface OIDCTokenClaims {
+  sub: string;
   email: string;
   name: string;
   preferred_username?: string;
   given_name?: string;
   family_name?: string;
   email_verified: boolean;
-  iss: string; // issuer
-  aud: string[]; // audience
-  exp: number; // expiration
-  iat: number; // issued at
+  iss: string;
+  aud: string | string[];
+  exp: number;
+  iat: number;
   auth_time: number;
-  urn:zitadel:iam:org:project:roles?: Record<string, Record<string, string>>;
-  urn:zitadel:iam:org:id?: string;
-  urn:zitadel:iam:user:metadata?: Record<string, any>;
+  nonce?: string;
+  at_hash?: string;
+  groups?: string[];
+  roles?: string[];
+  [key: string]: unknown;
 }
 
 // Simplified user session
@@ -22,13 +24,14 @@ export interface SessionUser {
   id: string;
   email: string;
   name: string;
-  roles: string[];
+  roles: UserRole[];
   organization?: string;
-  metadata?: Record<string, any>;
+  groups?: string[];
+  metadata?: Record<string, unknown>;
 }
 
 // Role definitions
-export type UserRole = 'dosen' | 'mahasiswa' | 'admin_akademik' | 'kaprodi';
+export type UserRole = 'dosen' | 'mahasiswa' | 'admin_akademik' | 'kaprodi' | 'jurusan';
 
 // Permission definitions
 export interface Permission {
@@ -60,10 +63,41 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     { resource: 'mahasiswa', action: 'read' },
     { resource: 'laporan', action: 'read' },
   ],
+  jurusan: [
+    { resource: 'dosen', action: 'read' },
+    { resource: 'laporan', action: 'read' },
+    { resource: 'jadwal', action: 'read' },
+  ],
+};
+
+// Authentik OIDC configuration
+export interface AuthentikConfig {
+  issuerUrl: string;
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+  scopes: string[];
+}
+
+// Default OIDC scopes for Authentik
+export const DEFAULT_OIDC_SCOPES = [
+  'openid',
+  'profile',
+  'email',
+  'offline_access',
+] as const;
+
+// Authentik Group to Role mapping
+export const GROUP_ROLE_MAP: Record<string, UserRole> = {
+  dosen: 'dosen',
+  mahasiswa: 'mahasiswa',
+  admin_akademik: 'admin_akademik',
+  kaprodi: 'kaprodi',
+  jurusan: 'jurusan',
 };
 
 // API Response types
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
   message?: string;

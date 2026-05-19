@@ -9,12 +9,12 @@ GRANT ALL PRIVILEGES ON DATABASE akademik_db TO akademik_user;
 -- Create basic tables structure
 CREATE SCHEMA IF NOT EXISTS public;
 
--- Users table (synced from Zitadel)
+-- Users table (synced from Authentik)
 CREATE TABLE users (
     id UUID PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
-    zitadel_user_id VARCHAR(255) UNIQUE NOT NULL,
+    authentik_user_id VARCHAR(255) UNIQUE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -101,7 +101,7 @@ CREATE TABLE nilai (
 
 -- Create indexes for better performance
 CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_zitadel_user_id ON users(zitadel_user_id);
+CREATE INDEX idx_users_authentik_user_id ON users(authentik_user_id);
 CREATE INDEX idx_user_roles_user_id ON user_roles(user_id);
 CREATE INDEX idx_kehadiran_mahasiswa_kelas ON kehadiran(mahasiswa_id, kelas_id);
 CREATE INDEX idx_nilai_mahasiswa_kelas ON nilai(mahasiswa_id, kelas_id);

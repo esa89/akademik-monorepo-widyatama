@@ -1,4 +1,5 @@
 import React from "react";
+import { UserMenu } from "@/components/auth/UserMenu";
 
 type TabItem = {
   key: string;
@@ -10,13 +11,9 @@ type HeaderProps = {
   tabs: TabItem[];
   currentTab: string;
   onTabChange: (key: string) => void;
-  user: {
-    name: string;
-    icon?: React.ReactNode;
-  };
 };
 
-const Header: React.FC<HeaderProps> = ({ tabs, currentTab, onTabChange, user }) => {
+const Header: React.FC<HeaderProps> = ({ tabs, currentTab, onTabChange }) => {
   return (
     <header className="flex items-center justify-between px-6 py-4 bg-white border-b shadow-sm">
       <nav className="flex space-x-6">
@@ -36,10 +33,7 @@ const Header: React.FC<HeaderProps> = ({ tabs, currentTab, onTabChange, user }) 
         ))}
       </nav>
 
-      <div className="flex items-center gap-2">
-        {user.icon}
-        <span className="text-sm font-medium text-gray-800">{user.name}</span>
-      </div>
+      <UserMenu />
     </header>
   );
 };

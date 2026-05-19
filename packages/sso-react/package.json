@@ -1,0 +1,37 @@
+{
+  "name": "@widyatama/sso-react",
+  "version": "1.0.0",
+  "description": "SSO utilities for React frontends with Authentik OIDC",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rimraf dist",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "oidc-client-ts": "^3.0.1",
+    "@widyatama/sso-types": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "rimraf": "^5.0.0",
+    "@types/react": "^18.0.0",
+    "react": "^18.0.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/**/*"
+  ]
+}

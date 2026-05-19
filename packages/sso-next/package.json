@@ -1,7 +1,7 @@
 {
   "name": "@widyatama/sso-next",
   "version": "1.0.0",
-  "description": "SSO utilities for Next.js frontends",
+  "description": "SSO utilities for Next.js frontends (Authentik OIDC)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

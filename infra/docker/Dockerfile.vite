@@ -1,0 +1,70 @@
+# Dockerfile for Vite-based React frontend apps
+# Supports fe-dosen, fe-identity, fe-jurusan, fe-mahasiswa, fe-akademik
+
+FROM node:20-alpine AS base
+WORKDIR /app
+RUN npm install -g pnpm@10.12.4
+
+# Install dependencies stage - copy all workspace package.json for reliable install
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+ARG APP_NAME
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY apps/ ./apps/
+RUN find apps -type f ! -name 'package.json' -delete
+COPY packages/ ./packages/
+RUN find packages -type f ! -name 'package.json' -delete
+
+# Install all workspace dependencies (required for shared package builds)
+RUN pnpm install --frozen-lockfile
+
+# Development stage - runs the Vite dev server
+FROM base AS development
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Restore package-specific node_modules (excluded by .dockerignore) and build shared packages
+RUN pnpm install --frozen-lockfile
+RUN pnpm build --filter=@widyatama/ui --filter=@widyatama/sso-types --filter=@widyatama/sso-react
+
+ARG APP_NAME
+ENV APP_NAME=${APP_NAME}
+
+# Vite dev server port (override per app via compose)
+EXPOSE 5173
+
+CMD ["sh", "-c", "pnpm dev --filter=${APP_NAME} -- --host 0.0.0.0"]
+
+# ---------------------------------------------------------------------------
+# Production stage - build static assets and serve with nginx
+# ---------------------------------------------------------------------------
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+ARG APP_NAME
+
+# Restore package-specific node_modules and build shared packages
+RUN pnpm install --frozen-lockfile
+RUN pnpm build --filter=@widyatama/ui --filter=@widyatama/sso-types --filter=@widyatama/sso-react
+
+# Build the specific app
+RUN pnpm build --filter=${APP_NAME}
+
+FROM nginx:alpine AS production
+WORKDIR /usr/share/nginx/html
+
+ARG APP_NAME
+
+# Copy built assets from builder
+COPY --from=builder /app/apps/${APP_NAME}/dist ./
+
+# nginx config for SPA with fallback to index.html on port 3000
+RUN echo 'server { listen 3000; server_name localhost; location / { root /usr/share/nginx/html; index index.html; try_files $uri $uri/ /index.html; } }' > /etc/nginx/conf.d/default.conf
+
+EXPOSE 3000
+
+CMD ["nginx", "-g", "daemon off;"]

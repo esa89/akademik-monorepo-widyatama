@@ -1,0 +1,123 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Degree {
+  D3
+  D4
+  S1
+  S2
+  S3
+}
+
+model Faculty {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  studyPrograms StudyProgram[]
+
+  @@index([code])
+  @@index([name])
+  @@map("faculties")
+}
+
+model StudyProgram {
+  id            String      @id @default(uuid())
+  facultyId     String
+  code          String      @unique
+  name          String
+  degree        Degree
+  accreditation String?
+  description   String?
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  faculty       Faculty     @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  curriculums   Curriculum[]
+
+  @@index([code])
+  @@index([name])
+  @@index([facultyId])
+  @@index([degree])
+  @@map("study_programs")
+}
+
+model Curriculum {
+  id             String       @id @default(uuid())
+  studyProgramId String
+  code           String       @unique
+  name           String
+  year           Int
+  description    String?
+  totalSemester  Int
+  totalSks       Int
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  studyProgram   StudyProgram @relation(fields: [studyProgramId], references: [id], onDelete: Cascade)
+  courses        Course[]
+
+  @@index([code])
+  @@index([name])
+  @@index([year])
+  @@index([studyProgramId])
+  @@map("curriculums")
+}
+
+model Course {
+  id            String     @id @default(uuid())
+  curriculumId  String
+  code          String     @unique
+  name          String
+  description   String?
+  sks           Int
+  semester      Int
+  isActive      Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  curriculum    Curriculum @relation(fields: [curriculumId], references: [id], onDelete: Cascade)
+
+  @@index([code])
+  @@index([name])
+  @@index([semester])
+  @@index([curriculumId])
+  @@map("courses")
+}
+
+enum SemesterType {
+  GANJIL
+  GENAP
+  PENDEK
+}
+
+model AcademicSemester {
+  id           String       @id @default(uuid())
+  code         String       @unique
+  name         String
+  academicYear String
+  semesterType SemesterType
+  startDate    DateTime     @db.Date
+  endDate      DateTime     @db.Date
+  isActive     Boolean      @default(true)
+  isCurrent    Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([code])
+  @@index([academicYear])
+  @@index([semesterType])
+  @@index([isCurrent])
+  @@map("academic_semesters")
+}
