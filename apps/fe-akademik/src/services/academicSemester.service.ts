@@ -18,10 +18,10 @@ export const academicSemesterService = {
   getById: (id: string) =>
     api.get<AcademicSemester>(`/academic-semesters/${id}`).then((r) => r.data),
 
-  create: (data: { code: string; name: string; description?: string; academicYear: string; type: string; startDate: string; endDate: string }) =>
+  create: (data: { code: string; name: string; academicYear: string; semesterType: string; startDate: string; endDate: string; isActive?: boolean; isCurrent?: boolean }) =>
     api.post<AcademicSemester>('/academic-semesters', data).then((r) => r.data),
 
-  update: (id: string, data: Partial<{ code: string; name: string; description: string; academicYear: string; type: string; startDate: string; endDate: string; isActive: boolean }>) =>
+  update: (id: string, data: Partial<{ code: string; name: string; academicYear: string; semesterType: string; startDate: string; endDate: string; isActive: boolean; isCurrent: boolean }>) =>
     api.put<AcademicSemester>(`/academic-semesters/${id}`, data).then((r) => r.data),
 
   setCurrent: (id: string) =>

@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AuthProvider, createDefaultAuthConfig } from '@widyatama/sso-react';
-import '@widyatama/ui/dist/style.css';
+import '@widyatama/ui/style.css';
 import '@/styles/index.css';
 import App from './app/App';
 

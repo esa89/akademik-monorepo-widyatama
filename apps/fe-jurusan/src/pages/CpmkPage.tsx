@@ -12,10 +12,12 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { EmptyState } from '@/components/common/EmptyState';
+import { useApp } from '@/contexts/AppContext';
 import type { Cpmk, CpmkDetail } from '@/types';
 
 export default function CpmkPage() {
   const queryClient = useQueryClient();
+  const { studyProgramId, selectedProfile } = useApp();
   const [search, setSearch] = useState('');
   const [courseFilter, setCourseFilter] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -34,16 +36,16 @@ export default function CpmkPage() {
     queryFn: () => cpmkService.getAll({ page: tableOptions.page, limit: tableOptions.itemsPerPage, search, courseId: courseFilter || undefined, sortBy: String(tableOptions.sortBy), sortOrder: tableOptions.sortDesc ? 'desc' : 'asc' }),
   });
 
-  // Fetch courses for filter/form
+  // Fetch courses — scoped to study program when tenant ID is set
   const { data: coursesData } = useQuery({
-    queryKey: QUERY_KEYS.courses({ limit: 100 }),
-    queryFn: () => courseService.getAll({ limit: 100 }),
+    queryKey: QUERY_KEYS.courses({ limit: 100, studyProgramId: studyProgramId ?? undefined }),
+    queryFn: () => courseService.getAll({ limit: 100, studyProgramId: studyProgramId ?? undefined }),
   });
 
-  // Fetch CPL list for mapping
+  // Fetch CPL list — scoped to selected curriculum
   const { data: cplData } = useQuery({
-    queryKey: QUERY_KEYS.cpl({ limit: 100 }),
-    queryFn: () => cplService.getAll({ limit: 100 }),
+    queryKey: QUERY_KEYS.cpl({ limit: 100, graduateProfileId: selectedProfile?.id }),
+    queryFn: () => cplService.getAll({ limit: 100, graduateProfileId: selectedProfile?.id }),
   });
 
   const courseOptions = (coursesData?.data ?? []).map((c) => ({ value: c.id, label: `${c.code} - ${c.name}` }));

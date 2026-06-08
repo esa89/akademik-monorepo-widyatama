@@ -18,10 +18,10 @@ export const courseService = {
   getById: (id: string) =>
     api.get<Course>(`/courses/${id}`).then((r) => r.data),
 
-  create: (data: { curriculumId: string; code: string; name: string; description?: string; sks: number; semester: number }) =>
+  create: (data: { curriculumId?: string; facultyId?: string; code: string; name: string; description?: string; sks: number; semester: number }) =>
     api.post<Course>('/courses', data).then((r) => r.data),
 
-  update: (id: string, data: Partial<{ curriculumId: string; code: string; name: string; description: string; sks: number; semester: number; isActive: boolean }>) =>
+  update: (id: string, data: Partial<{ curriculumId: string; facultyId: string; code: string; name: string; description: string; sks: number; semester: number; isActive: boolean }>) =>
     api.put<Course>(`/courses/${id}`, data).then((r) => r.data),
 
   remove: (id: string) =>

@@ -7,6 +7,9 @@ import { StudyProgramModule } from './modules/study-program/study-program.module
 import { CurriculumModule } from './modules/curriculum/curriculum.module';
 import { CourseModule } from './modules/course/course.module';
 import { AcademicSemesterModule } from './modules/academic-semester/academic-semester.module';
+import { LecturerModule } from './modules/lecturer/lecturer.module';
+import { StudentModule } from './modules/student/student.module';
+import { AcademicClassModule } from './modules/academic-class/academic-class.module';
 
 @Module({
   imports: [
@@ -21,6 +24,9 @@ import { AcademicSemesterModule } from './modules/academic-semester/academic-sem
     CurriculumModule,
     CourseModule,
     AcademicSemesterModule,
+    LecturerModule,
+    StudentModule,
+    AcademicClassModule,
   ],
 })
 export class AppModule {}

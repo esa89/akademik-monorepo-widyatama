@@ -6,6 +6,7 @@ import CpmkPage from '@/pages/CpmkPage';
 import SubCpmkPage from '@/pages/SubCpmkPage';
 import AssessmentPage from '@/pages/AssessmentPage';
 import RubricPage from '@/pages/RubricPage';
+import VisiMisiPage from '@/pages/VisiMisiPage';
 import LoginPage from '@/pages/auth/LoginPage';
 import CallbackPage from '@/pages/auth/CallbackPage';
 import { ProtectedRoute, PublicRoute } from '@/components/auth/ProtectedRoute';
@@ -24,6 +25,7 @@ export const router = createBrowserRouter([
       { path: 'sub-cpmk', element: <SubCpmkPage /> },
       { path: 'assessments', element: <AssessmentPage /> },
       { path: 'rubrics', element: <RubricPage /> },
+      { path: 'visi-misi', element: <VisiMisiPage /> },
     ],
   },
 ]);

@@ -10,66 +10,51 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateCurriculumDto {
-  @ApiProperty({
-    description: 'Study Program ID',
-    example: '550e8400-e29b-41d4-a716-446655440000',
-  })
+  @ApiPropertyOptional({ description: 'Study Program ID (for prodi-scope curriculum)' })
   @IsString()
   @IsUUID()
-  @IsNotEmpty()
-  studyProgramId!: string;
+  @IsOptional()
+  studyProgramId?: string;
 
-  @ApiProperty({
-    description: 'Unique Curriculum code',
-    example: 'KUR-IF-2025',
-  })
+  @ApiPropertyOptional({ description: 'Faculty ID (for faculty-scope curriculum)' })
+  @IsString()
+  @IsUUID()
+  @IsOptional()
+  facultyId?: string;
+
+  @ApiPropertyOptional({ description: 'Unique Curriculum code', example: 'KUR-IF-2025' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
   code!: string;
 
-  @ApiProperty({
-    description: 'Curriculum name',
-    example: 'Kurikulum Informatika 2025',
-  })
+  @ApiPropertyOptional({ description: 'Curriculum name', example: 'Kurikulum Informatika 2025' })
   @IsString()
   @IsNotEmpty()
   @MinLength(3)
   @MaxLength(200)
   name!: string;
 
-  @ApiProperty({
-    description: 'Effective year of the curriculum',
-    example: 2025,
-  })
+  @ApiPropertyOptional({ description: 'Effective year', example: 2025 })
   @IsInt()
   @Min(2000)
   year!: number;
 
-  @ApiPropertyOptional({
-    description: 'Description of the curriculum',
-    example: 'Kurikulum berbasis OBE untuk program studi Informatika',
-  })
+  @ApiPropertyOptional({ description: 'Description' })
   @IsString()
   @IsOptional()
   description?: string;
 
-  @ApiProperty({
-    description: 'Total number of semesters',
-    example: 8,
-  })
+  @ApiPropertyOptional({ description: 'Total semesters', example: 8 })
   @IsInt()
   @Min(1)
   @Max(14)
   totalSemester!: number;
 
-  @ApiProperty({
-    description: 'Total SKS (credit units)',
-    example: 144,
-  })
+  @ApiPropertyOptional({ description: 'Total SKS', example: 144 })
   @IsInt()
   @Min(1)
   @Max(200)

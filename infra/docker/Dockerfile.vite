@@ -25,17 +25,16 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Restore package-specific node_modules (excluded by .dockerignore) and build shared packages
-RUN pnpm install --frozen-lockfile
-RUN pnpm build --filter=@widyatama/ui --filter=@widyatama/sso-types --filter=@widyatama/sso-react
-
 ARG APP_NAME
 ENV APP_NAME=${APP_NAME}
 
 # Vite dev server port (override per app via compose)
 EXPOSE 5173
 
-CMD ["sh", "-c", "pnpm dev --filter=${APP_NAME} -- --host 0.0.0.0"]
+# Entrypoint cek hash package.json — install hanya jika ada perubahan
+COPY infra/docker/entrypoint-vite.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
 
 # ---------------------------------------------------------------------------
 # Production stage - build static assets and serve with nginx

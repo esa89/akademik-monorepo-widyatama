@@ -45,14 +45,22 @@ export class QueryCurriculumDto {
   @IsOptional()
   search?: string;
 
-  @ApiPropertyOptional({
-    description: 'Filter by Study Program ID',
-    example: '550e8400-e29b-41d4-a716-446655440000',
-  })
+  @ApiPropertyOptional({ description: 'Filter by Study Program ID' })
   @IsString()
   @IsUUID()
   @IsOptional()
   studyProgramId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by Faculty ID' })
+  @IsString()
+  @IsUUID()
+  @IsOptional()
+  facultyId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by scope: universitas | fakultas | prodi' })
+  @IsIn(['universitas', 'fakultas', 'prodi'])
+  @IsOptional()
+  scope?: 'universitas' | 'fakultas' | 'prodi';
 
   @ApiPropertyOptional({
     description: 'Filter by effective year',

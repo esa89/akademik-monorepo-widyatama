@@ -1,0 +1,790 @@
+import { useState, useRef } from 'react';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import * as XLSX from 'xlsx';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { DataTable, Input, Button, Drawer, Switch } from '@widyatama/ui';
+import type { DataTableOptions, Header } from '@widyatama/ui';
+import { PageHeader } from '@/components/common/PageHeader';
+import { StatCard } from '@/components/common/StatCard';
+import { StatusBadge } from '@/components/common/StatusBadge';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { useDebounce } from '@/hooks/useDebounce';
+import { academicClassService } from '@/services/academicClass.service';
+import { academicSemesterService } from '@/services/academicSemester.service';
+import { courseService } from '@/services/course.service';
+import { lecturerService } from '@/services/lecturer.service';
+import { studentService } from '@/services/student.service';
+import { SearchCombobox } from '@/components/common/SearchCombobox';
+import type { AcademicClass } from '@/types';
+import {
+  School, Search, Plus, Pencil, Trash2,
+  CheckCircle2, XCircle, Users, BookOpen,
+  GraduationCap, Upload, FileSpreadsheet,
+} from 'lucide-react';
+
+// ─── Zod Schema ───────────────────────────────────────────────────────────────
+
+const classSchema = z.object({
+  semesterId:          z.string().min(1, 'Semester akademik wajib dipilih'),
+  courseId:            z.string().min(1, 'Mata kuliah wajib dipilih'),
+  name:                z.string().min(1, 'Nama kelas wajib diisi').max(200),
+  capacity:            z.number({ invalid_type_error: 'Kapasitas harus berupa angka' })
+                        .int().min(1, 'Kapasitas minimal 1').max(200, 'Kapasitas maksimal 200'),
+  isActive:            z.boolean(),
+  primaryLecturerId:   z.string().min(1, 'Dosen utama wajib dipilih'),
+  assistantLecturerId: z.string().optional(),
+  studentIds:          z.array(z.string()).optional(),
+});
+
+type ClassFormData = z.infer<typeof classSchema>;
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const LABEL_CLS = 'block text-sm font-medium text-gray-700 mb-1.5';
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function CapacityBadge({ current, max }: { current: number; max: number }) {
+  const pct = (current / max) * 100;
+  const cls = pct >= 100 ? 'bg-red-50 text-red-700 border-red-200'
+    : pct >= 80 ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
+    : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  return (
+    <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-medium border ${cls}`}>
+      {current}/{max}
+    </span>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+export default function AcademicClassPage() {
+  const queryClient = useQueryClient();
+
+  const [search, setSearch]     = useState('');
+  const debouncedSearch         = useDebounce(search);
+  const [options, setOptions]   = useState<DataTableOptions<AcademicClass>>({
+    page: 1, itemsPerPage: 10, sortBy: 'name' as keyof AcademicClass, sortDesc: false,
+  });
+  const [filterSemesterId, setFilterSemesterId] = useState('');
+  const [filterCourseId, setFilterCourseId]     = useState('');
+  const [filterStatus, setFilterStatus]         = useState('');
+
+  const [drawerOpen, setDrawerOpen]   = useState(false);
+  const [editingId, setEditingId]     = useState<string | null>(null);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [xlsxMsg, setXlsxMsg]         = useState<{ found: number; missing: string[] } | null>(null);
+
+  const [detailOpen, setDetailOpen]         = useState(false);
+  const [detailId, setDetailId]             = useState<string | null>(null);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleteId, setDeleteId]             = useState<string | null>(null);
+  const [toastMsg, setToastMsg]             = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const xlsxInputRef = useRef<HTMLInputElement>(null);
+
+  // Label untuk SearchCombobox di edit mode (supaya langsung tampil tanpa buka dropdown)
+  const [displayValues, setDisplayValues] = useState({
+    semesterId: '', courseId: '', primaryLecturerId: '', assistantLecturerId: '',
+  });
+
+  // ─── Form ────────────────────────────────────────────────────────────────
+
+  const {
+    register, control, handleSubmit, reset, watch, setValue,
+    formState: { errors },
+  } = useForm<ClassFormData>({
+    resolver: zodResolver(classSchema),
+    defaultValues: {
+      semesterId: '', courseId: '', name: '', capacity: 40,
+      isActive: true, primaryLecturerId: '', assistantLecturerId: '', studentIds: [],
+    },
+  });
+
+  const watchedStudentIds = watch('studentIds') ?? [];
+  const watchedCapacity   = watch('capacity');
+
+  // ─── Queries ─────────────────────────────────────────────────────────────
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['academic-classes', options.page, options.itemsPerPage, debouncedSearch, filterSemesterId, filterCourseId, filterStatus],
+    queryFn: () => academicClassService.getAll({
+      page: options.page, limit: options.itemsPerPage,
+      search: debouncedSearch || undefined,
+      semesterId: filterSemesterId || undefined,
+      courseId: filterCourseId || undefined,
+      isActive: filterStatus === '' ? undefined : filterStatus === 'true',
+    }),
+  });
+
+  const { data: activeData } = useQuery({
+    queryKey: ['academic-classes', 'stat-active'],
+    queryFn:  () => academicClassService.getAll({ isActive: true, limit: 1 }),
+  });
+
+  // Semester dan MK masih diload untuk filter bar (ringan)
+  const { data: semesters } = useQuery({
+    queryKey: ['academic-semesters', 'filter-list'],
+    queryFn:  () => academicSemesterService.getAll({ page: 1, limit: 50 }),
+  });
+
+  const { data: courses } = useQuery({
+    queryKey: ['courses', 'filter-list'],
+    queryFn:  () => courseService.getAll({ page: 1, limit: 50 }),
+  });
+
+  // ─── Fetch functions untuk SearchCombobox ────────────────────────────────
+
+  const fetchSemesters = async ({ search, page, limit }: { search: string; page: number; limit: number }) => {
+    const res = await academicSemesterService.getAll({ search: search || undefined, page, limit });
+    return {
+      data: (res.data ?? []).map((s) => ({ value: s.id, label: s.name, sublabel: s.academicYear })),
+      hasMore: (res.meta?.page ?? 0) < (res.meta?.totalPages ?? 1),
+    };
+  };
+
+  const fetchCourses = async ({ search, page, limit }: { search: string; page: number; limit: number }) => {
+    const res = await courseService.getAll({ search: search || undefined, page, limit });
+    return {
+      data: (res.data ?? []).map((c) => ({ value: c.id, label: c.name, sublabel: `${c.code} · ${c.sks} SKS` })),
+      hasMore: (res.meta?.page ?? 0) < (res.meta?.totalPages ?? 1),
+    };
+  };
+
+  const fetchLecturers = async ({ search, page, limit }: { search: string; page: number; limit: number }) => {
+    const res = await lecturerService.getAll({ search: search || undefined, page, limit, isActive: true });
+    return {
+      data: (res.data ?? []).map((l) => ({
+        value: l.id,
+        label: formatLecturerName(l),
+        sublabel: `NIDN: ${l.nidn}`,
+      })),
+      hasMore: (res.meta?.page ?? 0) < (res.meta?.totalPages ?? 1),
+    };
+  };
+
+  const { data: allStudents } = useQuery({
+    queryKey: ['students', 'all-active'],
+    queryFn:  () => studentService.getAll({ page: 1, limit: 500, studentStatus: 'AKTIF' }),
+    enabled:  drawerOpen,
+  });
+
+  const { data: detailData } = useQuery({
+    queryKey: ['academic-classes', 'detail', detailId],
+    queryFn:  () => academicClassService.getById(detailId!),
+    enabled:  !!detailId && detailOpen,
+  });
+
+  // ─── Mutations ────────────────────────────────────────────────────────────
+
+  const createMutation = useMutation({
+    mutationFn: academicClassService.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['academic-classes'] });
+      setDrawerOpen(false); resetForm();
+      showToast('success', 'Kelas perkuliahan berhasil dibuat.');
+    },
+    onError: (err: any) => {
+      showToast('error', err.response?.data?.message || 'Gagal membuat kelas perkuliahan');
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof academicClassService.update>[1] }) =>
+      academicClassService.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['academic-classes'] });
+      setDrawerOpen(false); resetForm();
+      showToast('success', 'Kelas perkuliahan berhasil diperbarui.');
+    },
+    onError: (err: any) => {
+      showToast('error', err.response?.data?.message || 'Gagal memperbarui kelas perkuliahan');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: academicClassService.remove,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['academic-classes'] });
+      setConfirmDeleteOpen(false);
+      showToast('success', 'Kelas perkuliahan berhasil dihapus.');
+    },
+    onError: (err: any) => {
+      setConfirmDeleteOpen(false);
+      showToast('error', err.response?.data?.message || 'Gagal menghapus kelas perkuliahan');
+    },
+  });
+
+  // ─── Helpers ─────────────────────────────────────────────────────────────
+
+  const showToast = (type: 'success' | 'error', text: string) => {
+    setToastMsg({ type, text });
+    setTimeout(() => setToastMsg(null), 4000);
+  };
+
+  const resetForm = () => {
+    reset({
+      semesterId: '', courseId: '', name: '', capacity: 40,
+      isActive: true, primaryLecturerId: '', assistantLecturerId: '', studentIds: [],
+    });
+    setEditingId(null);
+    setStudentSearch('');
+    setXlsxMsg(null);
+    setDisplayValues({ semesterId: '', courseId: '', primaryLecturerId: '', assistantLecturerId: '' });
+  };
+
+  const openCreate = () => { resetForm(); setDrawerOpen(true); };
+
+  const openEdit = (row: AcademicClass) => {
+    setEditingId(row.id);
+    const primaryLecturer   = row.lecturers?.find((l) => l.role === 'PRIMARY');
+    const assistantLecturer = row.lecturers?.find((l) => l.role === 'ASSISTANT');
+    reset({
+      semesterId:          row.semesterId,
+      courseId:            row.courseId,
+      name:                row.name,
+      capacity:            row.capacity,
+      isActive:            row.isActive,
+      primaryLecturerId:   primaryLecturer?.lecturerId ?? '',
+      assistantLecturerId: assistantLecturer?.lecturerId ?? '',
+      studentIds:          row.students?.map((s) => s.studentId) ?? [],
+    });
+    // Set display labels agar SearchCombobox langsung tampil label yang benar
+    setDisplayValues({
+      semesterId:          row.semester?.name ?? '',
+      courseId:            row.course?.name ?? '',
+      primaryLecturerId:   formatLecturerName(primaryLecturer?.lecturer),
+      assistantLecturerId: formatLecturerName(assistantLecturer?.lecturer),
+    });
+    setStudentSearch('');
+    setXlsxMsg(null);
+    setDrawerOpen(true);
+  };
+
+  const onSubmit = (formData: ClassFormData) => {
+    const lecturerList: { lecturerId: string; role: string }[] = [
+      { lecturerId: formData.primaryLecturerId, role: 'PRIMARY' },
+    ];
+    if (formData.assistantLecturerId) {
+      lecturerList.push({ lecturerId: formData.assistantLecturerId, role: 'ASSISTANT' });
+    }
+
+    const payload = {
+      semesterId: formData.semesterId,
+      courseId:   formData.courseId,
+      code:       formData.name.trim(),   // code = name (A/B/C)
+      name:       formData.name.trim(),
+      capacity:   formData.capacity,
+      isActive:   formData.isActive,
+      lecturers:  lecturerList,
+      studentIds: formData.studentIds ?? [],
+    };
+
+    if (editingId) updateMutation.mutate({ id: editingId, data: payload });
+    else createMutation.mutate(payload);
+  };
+
+  const toggleStudent = (studentId: string) => {
+    const current = watchedStudentIds;
+    if (current.includes(studentId)) {
+      setValue('studentIds', current.filter((id) => id !== studentId), { shouldValidate: true });
+    } else if (current.length < watchedCapacity) {
+      setValue('studentIds', [...current, studentId], { shouldValidate: true });
+    }
+  };
+
+  // ─── XLSX Upload ─────────────────────────────────────────────────────────
+
+  const handleXlsxUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = new Uint8Array(evt.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet    = workbook.Sheets[workbook.SheetNames[0]];
+        const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+        // Ambil semua nilai dari kolom pertama, lewati header jika ada string
+        const rawNims: string[] = rows
+          .flatMap((row) => [String(row[0] ?? '').trim()])
+          .filter((v) => v && v.toLowerCase() !== 'nim');
+
+        const studentMap = new Map<string, string>(
+          (allStudents?.data ?? []).map((s) => [s.nim.trim(), s.id]),
+        );
+
+        const found: string[]   = [];
+        const missing: string[] = [];
+
+        rawNims.forEach((nim) => {
+          const id = studentMap.get(nim);
+          if (id) found.push(id);
+          else missing.push(nim);
+        });
+
+        // Gabungkan dengan yang sudah dipilih sebelumnya
+        const merged = [...new Set([...watchedStudentIds, ...found])];
+        setValue('studentIds', merged, { shouldValidate: true });
+        setXlsxMsg({ found: found.length, missing });
+      } catch {
+        showToast('error', 'Gagal membaca file XLSX. Pastikan format file benar.');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+
+    // Reset input agar file yang sama bisa di-upload ulang
+    if (xlsxInputRef.current) xlsxInputRef.current.value = '';
+  };
+
+  const formatLecturerName = (lecturer: { name: string; frontTitle: string | null; backTitle: string | null } | null | undefined) => {
+    if (!lecturer) return '—';
+    return [lecturer.frontTitle, lecturer.name, lecturer.backTitle ? `, ${lecturer.backTitle}` : ''].filter(Boolean).join(' ').trim();
+  };
+
+  const filteredStudents = (allStudents?.data ?? []).filter((s) => {
+    if (!studentSearch) return true;
+    const q = studentSearch.toLowerCase();
+    return s.nim.toLowerCase().includes(q) || s.name.toLowerCase().includes(q);
+  });
+
+  // ─── Table Headers ─────────────────────────────────────────────────────────
+
+  const headers: Header<AcademicClass>[] = [
+    {
+      key: 'name', title: 'Nama Kelas', sortable: true,
+      render: (row) => (
+        <div className="cursor-pointer" onClick={() => { setDetailId(row.id); setDetailOpen(true); }}>
+          <p className="text-sm font-semibold text-gray-800 hover:text-primary">{row.name}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'courseId', title: 'Mata Kuliah',
+      render: (row) => (
+        <div>
+          <p className="text-xs font-medium text-gray-700">{row.course?.name ?? '—'}</p>
+          <p className="text-[11px] text-gray-400">{row.course?.code ?? ''} · {row.course?.sks ?? 0} SKS</p>
+        </div>
+      ),
+    },
+    {
+      key: 'semesterId', title: 'Semester',
+      render: (row) => (
+        <div>
+          <p className="text-xs font-medium text-gray-700">{row.semester?.name ?? '—'}</p>
+          <p className="text-[11px] text-gray-400">{row.semester?.academicYear ?? ''}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'lecturers' as keyof AcademicClass, title: 'Dosen Pengampu',
+      render: (row) => {
+        const primary   = row.lecturers?.find((l) => l.role === 'PRIMARY');
+        const assistant = row.lecturers?.find((l) => l.role === 'ASSISTANT');
+        return (
+          <div>
+            <p className="text-xs font-medium text-gray-700">{formatLecturerName(primary?.lecturer)}</p>
+            {assistant && <p className="text-[11px] text-gray-400">Asisten: {formatLecturerName(assistant?.lecturer)}</p>}
+          </div>
+        );
+      },
+    },
+    {
+      key: 'capacity', title: 'Mahasiswa / Kapasitas',
+      render: (row) => <CapacityBadge current={row.totalStudents ?? 0} max={row.capacity} />,
+    },
+    {
+      key: 'isActive', title: 'Status',
+      render: (row) => <StatusBadge active={row.isActive} />,
+    },
+    {
+      key: 'createdAt', title: 'Dibuat', sortable: true,
+      render: (row) => (
+        <span className="text-xs text-gray-400">
+          {new Date(row.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+        </span>
+      ),
+    },
+    {
+      key: 'id', title: 'Aksi',
+      render: (row) => (
+        <div className="flex items-center gap-1">
+          <button onClick={(e) => { e.stopPropagation(); openEdit(row); }}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Edit">
+            <Pencil size={14} />
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); setConfirmDeleteOpen(true); }}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Hapus">
+            <Trash2 size={14} />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
+  const total       = data?.meta?.total ?? 0;
+  const activeTotal = activeData?.meta?.total ?? 0;
+
+  // ─── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="space-y-6">
+
+      {/* Toast */}
+      {toastMsg && (
+        <div className={`fixed top-5 right-5 z-[9999] flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium
+          ${toastMsg.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+          {toastMsg.type === 'success' ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+          {toastMsg.text}
+        </div>
+      )}
+
+      <PageHeader
+        title="Kelas Perkuliahan"
+        description="Kelola kelas perkuliahan, dosen pengampu, dan mahasiswa"
+        action={{ label: 'Tambah Kelas', onClick: openCreate, icon: <Plus size={16} /> }}
+      />
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Total Kelas"   value={total}       icon={<School size={18} />}       color="blue"   />
+        <StatCard label="Kelas Aktif"   value={activeTotal} icon={<CheckCircle2 size={18} />} color="green"  />
+        <StatCard label="Semester"      value={semesters?.meta?.total ?? 0} icon={<BookOpen size={18} />}     color="purple" />
+        <StatCard label="Mata Kuliah"   value={courses?.meta?.total ?? 0}   icon={<GraduationCap size={18} />} color="yellow" />
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <div className="flex flex-wrap gap-3">
+          <div className="flex-1 min-w-[200px] relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input type="text" placeholder="Cari nama kelas atau mata kuliah..."
+              value={search} onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+          </div>
+          <select value={filterSemesterId} onChange={(e) => setFilterSemesterId(e.target.value)}
+            className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white min-w-[180px]">
+            <option value="">Semua Semester</option>
+            {semesters?.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <select value={filterCourseId} onChange={(e) => setFilterCourseId(e.target.value)}
+            className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white min-w-[180px]">
+            <option value="">Semua Mata Kuliah</option>
+            {courses?.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
+            className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white">
+            <option value="">Semua Status</option>
+            <option value="true">Aktif</option>
+            <option value="false">Tidak Aktif</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <DataTable
+          headers={headers}
+          items={data?.data ?? []}
+          totalItems={total}
+          loading={isLoading}
+          options={options}
+          onOptionsChange={setOptions}
+        />
+      </div>
+
+      {/* ─── Create / Edit Drawer ──────────────────────────────────────────── */}
+      <Drawer
+        open={drawerOpen}
+        onClose={() => { setDrawerOpen(false); resetForm(); }}
+        title={editingId ? 'Edit Kelas Perkuliahan' : 'Tambah Kelas Perkuliahan'}
+        footer={
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => { setDrawerOpen(false); resetForm(); }}>Batal</Button>
+            <Button onClick={handleSubmit(onSubmit)} disabled={createMutation.isPending || updateMutation.isPending}>
+              {createMutation.isPending || updateMutation.isPending ? 'Menyimpan...' : editingId ? 'Simpan Perubahan' : 'Buat Kelas'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-6 p-1">
+
+          {/* Section 1: Data Kelas */}
+          <div>
+            <h3 className="text-sm font-bold text-gray-700 mb-4 pb-2 border-b border-gray-100 flex items-center gap-2">
+              <School size={15} className="text-primary" /> Data Kelas
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+              <div>
+                <label className={LABEL_CLS}>Semester Akademik <span className="text-red-500">*</span></label>
+                <Controller name="semesterId" control={control}
+                  render={({ field }) => (
+                    <SearchCombobox
+                      value={field.value}
+                      onChange={field.onChange}
+                      displayValue={displayValues.semesterId}
+                      placeholder="Pilih semester..."
+                      error={!!errors.semesterId}
+                      fetchOptions={fetchSemesters}
+                    />
+                  )}
+                />
+                {errors.semesterId && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><XCircle size={11} />{errors.semesterId.message}</p>}
+              </div>
+
+              <div>
+                <label className={LABEL_CLS}>Mata Kuliah <span className="text-red-500">*</span></label>
+                <Controller name="courseId" control={control}
+                  render={({ field }) => (
+                    <SearchCombobox
+                      value={field.value}
+                      onChange={field.onChange}
+                      displayValue={displayValues.courseId}
+                      placeholder="Pilih mata kuliah..."
+                      error={!!errors.courseId}
+                      fetchOptions={fetchCourses}
+                    />
+                  )}
+                />
+                {errors.courseId && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><XCircle size={11} />{errors.courseId.message}</p>}
+              </div>
+
+              <div>
+                <label className={LABEL_CLS}>Nama Kelas <span className="text-red-500">*</span></label>
+                <Input {...register('name')} placeholder="A / B / C / Reguler / Karyawan"
+                  className={errors.name ? 'border-red-400' : ''} />
+                {errors.name && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><XCircle size={11} />{errors.name.message}</p>}
+              </div>
+
+              <div>
+                <label className={LABEL_CLS}>Kapasitas <span className="text-red-500">*</span></label>
+                <Input type="number" {...register('capacity', { valueAsNumber: true })} placeholder="40" min={1} max={200}
+                  className={errors.capacity ? 'border-red-400' : ''} />
+                {errors.capacity && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><XCircle size={11} />{errors.capacity.message}</p>}
+              </div>
+
+              <div className="flex items-center gap-3 pt-1">
+                <Controller name="isActive" control={control}
+                  render={({ field }) => <Switch checked={field.value} onCheckedChange={field.onChange} />}
+                />
+                <label className="text-sm font-medium text-gray-700">Status Aktif</label>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Dosen Pengampu */}
+          <div>
+            <h3 className="text-sm font-bold text-gray-700 mb-4 pb-2 border-b border-gray-100 flex items-center gap-2">
+              <GraduationCap size={15} className="text-primary" /> Dosen Pengampu
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={LABEL_CLS}>Dosen Utama <span className="text-red-500">*</span></label>
+                <Controller name="primaryLecturerId" control={control}
+                  render={({ field }) => (
+                    <SearchCombobox
+                      value={field.value}
+                      onChange={field.onChange}
+                      displayValue={displayValues.primaryLecturerId}
+                      placeholder="Pilih dosen utama..."
+                      error={!!errors.primaryLecturerId}
+                      fetchOptions={fetchLecturers}
+                    />
+                  )}
+                />
+                {errors.primaryLecturerId && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><XCircle size={11} />{errors.primaryLecturerId.message}</p>}
+              </div>
+              <div>
+                <label className={LABEL_CLS}>Dosen Asisten <span className="text-gray-400 font-normal">(opsional)</span></label>
+                <Controller name="assistantLecturerId" control={control}
+                  render={({ field }) => (
+                    <SearchCombobox
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      displayValue={displayValues.assistantLecturerId}
+                      placeholder="Tidak ada asisten..."
+                      fetchOptions={fetchLecturers}
+                    />
+                  )}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: Mahasiswa */}
+          <div>
+            <h3 className="text-sm font-bold text-gray-700 mb-4 pb-2 border-b border-gray-100 flex items-center gap-2">
+              <Users size={15} className="text-primary" /> Mahasiswa
+            </h3>
+
+            {/* Counter + Clear */}
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-xs text-gray-500">
+                Dipilih: <span className={`font-semibold ${watchedStudentIds.length > watchedCapacity ? 'text-red-600' : 'text-gray-800'}`}>
+                  {watchedStudentIds.length}
+                </span> / {watchedCapacity} mahasiswa
+              </span>
+              {watchedStudentIds.length > 0 && (
+                <button type="button" onClick={() => { setValue('studentIds', []); setXlsxMsg(null); }}
+                  className="text-xs text-red-500 hover:underline">
+                  Hapus semua
+                </button>
+              )}
+            </div>
+
+            {/* Upload XLSX */}
+            <div className="mb-3">
+              <input ref={xlsxInputRef} type="file" accept=".xlsx,.xls" className="hidden"
+                onChange={handleXlsxUpload} />
+              <button type="button" onClick={() => xlsxInputRef.current?.click()}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:border-primary hover:text-primary transition-colors">
+                <FileSpreadsheet size={14} />
+                Upload NIM dari file XLSX
+              </button>
+              <p className="text-[11px] text-gray-400 mt-1 text-center">
+                Format: satu kolom NIM (baris pertama bisa header "NIM" atau langsung data)
+              </p>
+
+              {/* Hasil upload */}
+              {xlsxMsg && (
+                <div className={`mt-2 px-3 py-2 rounded-lg text-xs flex items-start gap-2
+                  ${xlsxMsg.missing.length === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-yellow-50 text-yellow-700'}`}>
+                  <Upload size={12} className="mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-medium">{xlsxMsg.found} mahasiswa berhasil ditambahkan</p>
+                    {xlsxMsg.missing.length > 0 && (
+                      <p className="mt-0.5">NIM tidak ditemukan: {xlsxMsg.missing.slice(0, 5).join(', ')}
+                        {xlsxMsg.missing.length > 5 && ` +${xlsxMsg.missing.length - 5} lainnya`}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Search mahasiswa */}
+            <div className="relative mb-2">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input type="text" placeholder="Cari NIM atau nama mahasiswa..."
+                value={studentSearch} onChange={(e) => setStudentSearch(e.target.value)}
+                className="w-full pl-8 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+            </div>
+
+            {/* Daftar mahasiswa */}
+            <div className="border border-gray-200 rounded-lg overflow-y-auto max-h-52">
+              {filteredStudents.length === 0 ? (
+                <div className="flex items-center justify-center h-16 text-xs text-gray-400">
+                  {studentSearch ? 'Tidak ada mahasiswa yang cocok' : 'Belum ada data mahasiswa aktif'}
+                </div>
+              ) : (
+                filteredStudents.map((student) => {
+                  const selected  = watchedStudentIds.includes(student.id);
+                  const atCapacity = !selected && watchedStudentIds.length >= watchedCapacity;
+                  return (
+                    <label key={student.id}
+                      className={`flex items-center gap-3 px-3 py-2 border-b border-gray-50 last:border-0 transition-colors
+                        ${atCapacity ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'}
+                        ${selected ? 'bg-primary/5' : ''}`}>
+                      <input type="checkbox" checked={selected}
+                        onChange={() => toggleStudent(student.id)}
+                        disabled={atCapacity}
+                        className="rounded border-gray-300 text-primary focus:ring-primary/30" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-800 truncate">{student.name}</p>
+                        <p className="text-[11px] text-gray-400">{student.nim} · {student.studyProgram?.name ?? '—'}</p>
+                      </div>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      </Drawer>
+
+      {/* ─── Detail Drawer ─────────────────────────────────────────────────── */}
+      <Drawer
+        open={detailOpen}
+        onClose={() => { setDetailOpen(false); setDetailId(null); }}
+        title="Detail Kelas Perkuliahan"
+        footer={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => {
+              setDetailOpen(false);
+              if (detailData?.data) openEdit(detailData.data as any);
+            }}>
+              <Pencil size={14} className="mr-1" /> Edit
+            </Button>
+          </div>
+        }
+      >
+        {detailData?.data ? (() => {
+          const cls = detailData.data as AcademicClass;
+          return (
+            <div className="space-y-4 p-1">
+              <div>
+                <h2 className="text-base font-bold text-gray-800">{cls.name}</h2>
+                <p className="text-sm text-gray-500">{cls.course?.name} · {cls.semester?.name}</p>
+                <div className="mt-1.5"><StatusBadge active={cls.isActive} /></div>
+              </div>
+              {[
+                ['Mata Kuliah', `${cls.course?.name ?? '—'} (${cls.course?.sks ?? 0} SKS)`],
+                ['Semester', `${cls.semester?.name ?? '—'} — ${cls.semester?.academicYear ?? ''}`],
+                ['Kapasitas', `${cls.totalStudents ?? 0} / ${cls.capacity} mahasiswa`],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-start gap-3 py-2 border-b border-gray-50 last:border-0">
+                  <span className="text-xs font-medium text-gray-400 w-28 shrink-0">{label}</span>
+                  <span className="text-sm text-gray-800">{value}</span>
+                </div>
+              ))}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-2">Dosen Pengampu</p>
+                {cls.lecturers?.map((l) => (
+                  <div key={l.id} className="flex items-center gap-2 mb-1">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${l.role === 'PRIMARY' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                      {l.role === 'PRIMARY' ? 'Utama' : 'Asisten'}
+                    </span>
+                    <span className="text-xs text-gray-700">{formatLecturerName(l.lecturer)}</span>
+                  </div>
+                ))}
+              </div>
+              {cls.students && cls.students.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 mb-2">Mahasiswa ({cls.students.length})</p>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {cls.students.map((s) => (
+                      <div key={s.id} className="flex items-center gap-2 py-1 border-b border-gray-50">
+                        <span className="font-mono text-[11px] text-gray-500 w-20 shrink-0">{s.student?.nim}</span>
+                        <span className="text-xs text-gray-700">{s.student?.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })() : (
+          <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Memuat...</div>
+        )}
+      </Drawer>
+
+      {/* Confirm Delete */}
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        onClose={() => setConfirmDeleteOpen(false)}
+        onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
+        title="Hapus Kelas Perkuliahan"
+        description="Apakah Anda yakin ingin menghapus kelas ini? Semua data dosen dan mahasiswa dalam kelas ini akan ikut terhapus."
+        confirmLabel="Hapus"
+        isLoading={deleteMutation.isPending}
+        variant="danger"
+      />
+    </div>
+  );
+}

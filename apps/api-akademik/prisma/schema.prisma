@@ -10,12 +10,72 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum LecturerRole {
+  PRIMARY
+  ASSISTANT
+}
+
 enum Degree {
   D3
   D4
   S1
   S2
   S3
+}
+
+enum LastEducation {
+  S1
+  S2
+  S3
+  D4
+  PROFESI
+  SPESIALIS_1
+  SPESIALIS_2
+  LAINNYA
+}
+
+enum AcademicPosition {
+  TENAGA_PENGAJAR
+  ASISTEN_AHLI
+  LEKTOR
+  LEKTOR_KEPALA
+  GURU_BESAR
+}
+
+enum AuthentikStatus {
+  NOT_SYNCED
+  ACTIVE
+  DISABLED
+}
+
+enum Gender {
+  LAKI_LAKI
+  PEREMPUAN
+}
+
+enum StudentStatus {
+  AKTIF
+  CUTI
+  NON_AKTIF
+  LULUS
+  DROP_OUT
+  MENGUNDURKAN_DIRI
+}
+
+enum AdmissionPath {
+  REGULER
+  KELAS_KARYAWAN
+  RPL
+  PASCA_SARJANA
+}
+
+enum Agama {
+  ISLAM
+  KRISTEN_PROTESTAN
+  KRISTEN_KATOLIK
+  HINDU
+  BUDDHA
+  KONGHUCU
 }
 
 model Faculty {
@@ -27,6 +87,10 @@ model Faculty {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   studyPrograms StudyProgram[]
+  curriculums   Curriculum[]
+  courses       Course[]
+  lecturers     Lecturer[]
+  students      Student[]
 
   @@index([code])
   @@index([name])
@@ -46,6 +110,8 @@ model StudyProgram {
   updatedAt     DateTime    @updatedAt
   faculty       Faculty     @relation(fields: [facultyId], references: [id], onDelete: Cascade)
   curriculums   Curriculum[]
+  lecturers     Lecturer[]
+  students      Student[]
 
   @@index([code])
   @@index([name])
@@ -55,45 +121,127 @@ model StudyProgram {
 }
 
 model Curriculum {
-  id             String       @id @default(uuid())
-  studyProgramId String
-  code           String       @unique
+  id             String        @id @default(uuid())
+  studyProgramId String?
+  facultyId      String?
+  code           String
   name           String
   year           Int
   description    String?
   totalSemester  Int
   totalSks       Int
-  isActive       Boolean      @default(true)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  studyProgram   StudyProgram @relation(fields: [studyProgramId], references: [id], onDelete: Cascade)
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  studyProgram   StudyProgram? @relation(fields: [studyProgramId], references: [id], onDelete: Cascade)
+  faculty        Faculty?      @relation(fields: [facultyId], references: [id], onDelete: Cascade)
   courses        Course[]
+  students       Student[]
 
   @@index([code])
   @@index([name])
   @@index([year])
   @@index([studyProgramId])
+  @@index([facultyId])
   @@map("curriculums")
 }
 
 model Course {
-  id            String     @id @default(uuid())
-  curriculumId  String
-  code          String     @unique
+  id            String      @id @default(uuid())
+  curriculumId  String?
+  facultyId     String?
+  code          String      @unique
   name          String
   description   String?
   sks           Int
   semester      Int
-  isActive      Boolean    @default(true)
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  curriculum    Curriculum @relation(fields: [curriculumId], references: [id], onDelete: Cascade)
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  curriculum      Curriculum?     @relation(fields: [curriculumId], references: [id], onDelete: Cascade)
+  faculty         Faculty?        @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  academicClasses AcademicClass[]
 
   @@index([code])
   @@index([name])
   @@index([semester])
   @@index([curriculumId])
+  @@index([facultyId])
   @@map("courses")
+}
+
+model Lecturer {
+  id               String           @id @default(uuid())
+  nidn             String           @unique
+  nrk              String           @unique
+  name             String
+  frontTitle       String?
+  backTitle        String?
+  email            String           @unique
+  phoneNumber      String?
+  lastEducation    LastEducation
+  academicPosition AcademicPosition @default(TENAGA_PENGAJAR)
+  facultyId        String
+  studyProgramId   String
+  isActive         Boolean          @default(true)
+  identityUserId   String?
+  identityUsername String?          @unique
+  authentikStatus  AuthentikStatus  @default(NOT_SYNCED)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  faculty          Faculty          @relation(fields: [facultyId], references: [id])
+  studyProgram     StudyProgram     @relation(fields: [studyProgramId], references: [id])
+  classLecturers   ClassLecturer[]
+
+  @@index([nidn])
+  @@index([nrk])
+  @@index([email])
+  @@index([identityUsername])
+  @@index([facultyId])
+  @@index([studyProgramId])
+  @@index([lastEducation])
+  @@index([academicPosition])
+  @@index([isActive])
+  @@index([authentikStatus])
+  @@map("lecturers")
+}
+
+model Student {
+  id                 String            @id @default(uuid())
+  nim                String            @unique
+  name               String
+  birthPlace         String?
+  birthDate          DateTime?         @db.Date
+  gender             Gender
+  email              String?           @unique
+  phoneNumber        String?
+  agama              Agama?
+  facultyId          String
+  studyProgramId     String
+  curriculumId       String?
+  academicSemesterId String?
+  admissionPath      AdmissionPath     @default(REGULER)
+  entryYear          Int
+  studentStatus      StudentStatus     @default(AKTIF)
+  isActive           Boolean           @default(true)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  faculty            Faculty           @relation(fields: [facultyId], references: [id])
+  studyProgram       StudyProgram      @relation(fields: [studyProgramId], references: [id])
+  curriculum         Curriculum?       @relation(fields: [curriculumId], references: [id])
+  academicSemester   AcademicSemester? @relation(fields: [academicSemesterId], references: [id])
+  classStudents      ClassStudent[]
+
+  @@index([nim])
+  @@index([email])
+  @@index([facultyId])
+  @@index([studyProgramId])
+  @@index([curriculumId])
+  @@index([entryYear])
+  @@index([studentStatus])
+  @@index([gender])
+  @@index([isActive])
+  @@map("students")
 }
 
 enum SemesterType {
@@ -115,9 +263,67 @@ model AcademicSemester {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
+  students        Student[]
+  academicClasses AcademicClass[]
+
   @@index([code])
   @@index([academicYear])
   @@index([semesterType])
   @@index([isCurrent])
   @@map("academic_semesters")
+}
+
+model AcademicClass {
+  id         String   @id @default(uuid())
+  semesterId String
+  courseId   String
+  code       String
+  name       String
+  capacity   Int      @default(40)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  semester  AcademicSemester @relation(fields: [semesterId], references: [id])
+  course    Course           @relation(fields: [courseId], references: [id])
+  lecturers ClassLecturer[]
+  students  ClassStudent[]
+
+  @@unique([semesterId, courseId, code])
+  @@index([semesterId])
+  @@index([courseId])
+  @@index([code])
+  @@index([isActive])
+  @@map("academic_classes")
+}
+
+model ClassLecturer {
+  id         String       @id @default(uuid())
+  classId    String
+  lecturerId String
+  role       LecturerRole @default(PRIMARY)
+  createdAt  DateTime     @default(now())
+
+  class    AcademicClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  lecturer Lecturer      @relation(fields: [lecturerId], references: [id])
+
+  @@unique([classId, lecturerId])
+  @@index([classId])
+  @@index([lecturerId])
+  @@map("class_lecturers")
+}
+
+model ClassStudent {
+  id        String   @id @default(uuid())
+  classId   String
+  studentId String
+  createdAt DateTime @default(now())
+
+  class   AcademicClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student Student       @relation(fields: [studentId], references: [id])
+
+  @@unique([classId, studentId])
+  @@index([classId])
+  @@index([studentId])
+  @@map("class_students")
 }

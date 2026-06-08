@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -12,12 +12,14 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { EmptyState } from '@/components/common/EmptyState';
+import { useApp } from '@/contexts/AppContext';
 import type { Cpl, CplCategory } from '@/types';
 
 const categoryOptions = Object.entries(CPL_CATEGORY_LABELS).map(([value, label]) => ({ value, label }));
 
 export default function CplPage() {
   const queryClient = useQueryClient();
+  const { selectedProfile } = useApp();
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<Cpl | null>(null);
@@ -29,10 +31,12 @@ export default function CplPage() {
     sortDesc: false,
   });
 
-  // Fetch CPL list
+  const profileId = selectedProfile?.id;
+
+  // Fetch CPL list — filtered by selected curriculum if one is active
   const { data, isLoading } = useQuery({
-    queryKey: QUERY_KEYS.cpl({ page: tableOptions.page, limit: tableOptions.itemsPerPage, search, sortBy: String(tableOptions.sortBy), sortDesc: tableOptions.sortDesc }),
-    queryFn: () => cplService.getAll({ page: tableOptions.page, limit: tableOptions.itemsPerPage, search, sortBy: String(tableOptions.sortBy), sortOrder: tableOptions.sortDesc ? 'desc' : 'asc' }),
+    queryKey: QUERY_KEYS.cpl({ page: tableOptions.page, limit: tableOptions.itemsPerPage, search, graduateProfileId: profileId, sortBy: String(tableOptions.sortBy), sortDesc: tableOptions.sortDesc }),
+    queryFn: () => cplService.getAll({ page: tableOptions.page, limit: tableOptions.itemsPerPage, search, graduateProfileId: profileId, sortBy: String(tableOptions.sortBy), sortOrder: tableOptions.sortDesc ? 'desc' : 'asc' }),
   });
 
   // Create/Update mutation
@@ -63,7 +67,11 @@ export default function CplPage() {
 
   const openCreate = () => {
     setEditItem(null);
-    reset({ code: '', name: '', category: 'SIKAP' as CplCategory, description: '', curriculumYear: new Date().getFullYear(), isActive: true });
+    reset({
+      code: '', name: '', category: 'SIKAP' as CplCategory, description: '',
+      curriculumYear: selectedProfile?.curriculumYear ?? new Date().getFullYear(),
+      isActive: true,
+    });
     setModalOpen(true);
   };
 
@@ -75,7 +83,8 @@ export default function CplPage() {
 
   const closeModal = () => { setModalOpen(false); setEditItem(null); };
 
-  const onSubmit = (formData: CplFormData) => saveMutation.mutate(formData);
+  const onSubmit = (formData: CplFormData) =>
+    saveMutation.mutate({ ...formData, graduateProfileId: profileId } as any);
 
   const categoryValue = watch('category');
 
@@ -113,7 +122,9 @@ export default function CplPage() {
     <div className="space-y-6">
       <PageHeader
         title="Capaian Pembelajaran Lulusan (CPL)"
-        description="Kelola capaian pembelajaran lulusan program studi"
+        description={selectedProfile
+          ? `Menampilkan CPL kurikulum: ${selectedProfile.name} ${selectedProfile.curriculumYear}`
+          : 'Kelola capaian pembelajaran lulusan program studi'}
         breadcrumb={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'CPL' }]}
         action={{ label: 'Tambah CPL', onClick: openCreate, icon: <Plus size={16} /> }}
       />

@@ -4,6 +4,7 @@ import { AuthProvider, createDefaultAuthConfig } from '@widyatama/sso-react';
 import '@widyatama/ui/style.css';
 import '@/styles/index.css';
 import App from './app/App';
+import { AppProvider } from './contexts/AppContext';
 
 const authConfig = createDefaultAuthConfig(
   import.meta.env.VITE_AUTHENTIK_CLIENT_ID || 'fe-jurusan',
@@ -15,7 +16,9 @@ const authConfig = createDefaultAuthConfig(
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AuthProvider config={authConfig}>
-      <App />
+      <AppProvider>
+        <App />
+      </AppProvider>
     </AuthProvider>
   </StrictMode>,
 );

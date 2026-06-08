@@ -1,5 +1,6 @@
 // src/index.ts
 import "./index.css";
+export * from "./components/Drawer/Drawer";
 export * from "./components/Button/Button";
 export * from "./components/Combobox/Combobox";
 export * from "./components/Input/Input";

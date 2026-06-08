@@ -7,6 +7,7 @@ export interface StudyProgramQuery {
   search?: string;
   facultyId?: string;
   degree?: string;
+  isActive?: boolean;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
 }

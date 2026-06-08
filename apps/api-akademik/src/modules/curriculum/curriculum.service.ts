@@ -35,17 +35,32 @@ export class CurriculumService {
   async create(data: CreateCurriculumDto) {
     this.logger.log(`Creating Curriculum with code: ${data.code}`);
 
-    const studyProgramExists = await this.repository.studyProgramExists(data.studyProgramId);
-    if (!studyProgramExists) {
-      throw new BadRequestException(
-        `Study Program with id '${data.studyProgramId}' not found`,
-      );
+    if (data.studyProgramId) {
+      const ok = await this.repository.studyProgramExists(data.studyProgramId);
+      if (!ok) {
+        throw new BadRequestException(
+          `Study Program with id '${data.studyProgramId}' not found`,
+        );
+      }
     }
 
-    const exists = await this.repository.existsByCode(data.code);
+    if (data.facultyId) {
+      const ok = await this.repository.facultyExists(data.facultyId);
+      if (!ok) {
+        throw new BadRequestException(
+          `Faculty with id '${data.facultyId}' not found`,
+        );
+      }
+    }
+
+    const exists = await this.repository.existsByCode(
+      data.code,
+      data.studyProgramId ?? null,
+      data.facultyId ?? null,
+    );
     if (exists) {
       throw new ConflictException(
-        `Curriculum with code '${data.code}' already exists`,
+        `Curriculum with code '${data.code}' already exists for this scope`,
       );
     }
 
@@ -63,21 +78,34 @@ export class CurriculumService {
     }
 
     if (data.studyProgramId) {
-      const studyProgramExists = await this.repository.studyProgramExists(
-        data.studyProgramId,
-      );
-      if (!studyProgramExists) {
+      const ok = await this.repository.studyProgramExists(data.studyProgramId);
+      if (!ok) {
         throw new BadRequestException(
           `Study Program with id '${data.studyProgramId}' not found`,
         );
       }
     }
 
+    if (data.facultyId) {
+      const ok = await this.repository.facultyExists(data.facultyId);
+      if (!ok) {
+        throw new BadRequestException(
+          `Faculty with id '${data.facultyId}' not found`,
+        );
+      }
+    }
+
     if (data.code && data.code !== existing.code) {
-      const codeExists = await this.repository.existsByCode(data.code);
+      const studyProgramId = data.studyProgramId !== undefined
+        ? (data.studyProgramId ?? null)
+        : (existing.studyProgramId ?? null);
+      const facultyId = data.facultyId !== undefined
+        ? (data.facultyId ?? null)
+        : (existing.facultyId ?? null);
+      const codeExists = await this.repository.existsByCode(data.code, studyProgramId, facultyId, id);
       if (codeExists) {
         throw new ConflictException(
-          `Curriculum with code '${data.code}' already exists`,
+          `Curriculum with code '${data.code}' already exists for this scope`,
         );
       }
     }

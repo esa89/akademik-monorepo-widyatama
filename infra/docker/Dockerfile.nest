@@ -28,7 +28,10 @@ ARG APP_NAME
 ENV APP_NAME=${APP_NAME}
 EXPOSE 3000
 
-CMD ["sh", "-c", "pnpm dev --filter=${APP_NAME}"]
+# Entrypoint cek hash package.json & prisma schema — install/generate hanya jika ada perubahan
+COPY infra/docker/entrypoint-nest.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
 
 # Build stage
 FROM base AS builder

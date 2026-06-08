@@ -1,5 +1,5 @@
 import { obeApi, akademikApi } from './api';
-import type { PaginatedResponse, Cpl, Cpmk, CpmkDetail, SubCpmk, Assessment, Rubric, Course, ApiDetailResponse } from '@/types';
+import type { PaginatedResponse, Cpl, Cpmk, CpmkDetail, SubCpmk, Assessment, Rubric, Course, GraduateProfile, ApiDetailResponse } from '@/types';
 
 // ─── CPL ────────────────────────────────────────────────────────
 export const cplService = {
@@ -50,4 +50,13 @@ export const rubricService = {
 // ─── COURSES (from api-akademik) ────────────────────────────────
 export const courseService = {
   getAll: (params?: Record<string, unknown>) => akademikApi.get<PaginatedResponse<Course>>('/courses', { params }).then((r) => r.data),
+};
+
+// ─── GRADUATE PROFILE (Visi & Misi) ─────────────────────────────
+export const graduateProfileService = {
+  getAll: (params?: Record<string, unknown>) => obeApi.get<PaginatedResponse<GraduateProfile>>('/graduate-profiles', { params }).then((r) => r.data),
+  getById: (id: string) => obeApi.get<ApiDetailResponse<GraduateProfile>>(`/graduate-profiles/${id}`).then((r) => r.data),
+  create: (data: Record<string, unknown>) => obeApi.post<ApiDetailResponse<GraduateProfile>>('/graduate-profiles', data).then((r) => r.data),
+  update: (id: string, data: Record<string, unknown>) => obeApi.put<ApiDetailResponse<GraduateProfile>>(`/graduate-profiles/${id}`, data).then((r) => r.data),
+  remove: (id: string) => obeApi.delete(`/graduate-profiles/${id}`).then((r) => r.data),
 };

@@ -1,3 +1,6 @@
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { useAuth, useUser } from '@widyatama/sso-react';
 import { Sidebar, Topbar } from '@widyatama/ui';
 import {
   LayoutDashboard,
@@ -7,21 +10,39 @@ import {
   BookMarked,
   CalendarDays,
   LogOut,
+  Users,
+  UserCheck,
+  School,
 } from 'lucide-react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
-import { useAuth, useUser } from '@widyatama/sso-react';
+import iconWidyatama from '@ui-assets/icon-widyatama.png';
+
+function WidyatamaIcon(_: { size?: number }) {
+  return <img src={iconWidyatama} alt="Widyatama" className="w-7 h-7 object-contain" />;
+}
 
 const menuGroups = [
   {
     group: 'Menu Utama',
     items: [
       { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard /> },
+    ],
+  },
+  {
+    group: 'Akademik',
+    items: [
+      { key: 'academic-classes', label: 'Kelas Perkuliahan', icon: <School /> },
+    ],
+  },
+  {
+    group: 'Master Akademik',
+    items: [
       { key: 'faculties', label: 'Fakultas', icon: <Building2 /> },
       { key: 'study-programs', label: 'Program Studi', icon: <GraduationCap /> },
       { key: 'curriculums', label: 'Kurikulum', icon: <BookOpen /> },
       { key: 'courses', label: 'Mata Kuliah', icon: <BookMarked /> },
       { key: 'academic-semesters', label: 'Semester Akademik', icon: <CalendarDays /> },
+      { key: 'lecturers', label: 'Dosen', icon: <Users /> },
+      { key: 'students', label: 'Mahasiswa', icon: <UserCheck /> },
     ],
   },
 ];
@@ -46,10 +67,10 @@ export default function DashboardLayout() {
   };
 
   return (
-    <div className="flex min-h-screen bg-[#f8f9fc]">
+    <div className="flex h-screen overflow-hidden bg-[#f8f9fc]">
       <Sidebar
         title="SYSTAMA"
-        titleIcon={<GraduationCap />}
+        titleIcon={<WidyatamaIcon />}
         menu={menuGroups}
         activeKey={activeKey}
         onMenuClick={handleMenuClick}

@@ -17,7 +17,8 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@ui-assets/*": ["../../packages/ui/src/assets/*"]
     }
   },
   "include": ["src"],

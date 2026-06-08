@@ -8,7 +8,9 @@ import { createPaginatedResult, PaginatedResult } from '../../common/dto/paginat
 
 export interface CurriculumMapped {
   id: string;
-  studyProgramId: string;
+  studyProgramId: string | null;
+  facultyId: string | null;
+  scope: 'universitas' | 'fakultas' | 'prodi';
   code: string;
   name: string;
   year: number;
@@ -16,10 +18,16 @@ export interface CurriculumMapped {
   totalSemester: number;
   totalSks: number;
   isActive: boolean;
-  studyProgram: { id: string; code: string; name: string };
+  studyProgram: { id: string; code: string; name: string; facultyId: string } | null;
+  faculty: { id: string; code: string; name: string } | null;
   createdAt: Date;
   updatedAt: Date;
 }
+
+const curriculumInclude = {
+  studyProgram: { select: { id: true, code: true, name: true, facultyId: true } },
+  faculty: { select: { id: true, code: true, name: true } },
+} satisfies Prisma.CurriculumInclude;
 
 @Injectable()
 export class CurriculumRepository {
@@ -27,14 +35,8 @@ export class CurriculumRepository {
 
   async findAll(query: QueryCurriculumDto): Promise<PaginatedResult<CurriculumMapped>> {
     const {
-      page = 1,
-      limit = 10,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
-      search,
-      studyProgramId,
-      year,
-      isActive,
+      page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc',
+      search, studyProgramId, facultyId, scope, year, isActive,
     } = query;
     const skip = (page - 1) * limit;
 
@@ -46,61 +48,53 @@ export class CurriculumRepository {
         { name: { contains: search, mode: 'insensitive' } },
       ];
     }
+    if (studyProgramId !== undefined) where.studyProgramId = studyProgramId;
+    if (facultyId !== undefined) where.facultyId = facultyId;
+    if (year !== undefined) where.year = year;
+    if (isActive !== undefined) where.isActive = isActive;
 
-    if (studyProgramId !== undefined) {
-      where.studyProgramId = studyProgramId;
-    }
-
-    if (year !== undefined) {
-      where.year = year;
-    }
-
-    if (isActive !== undefined) {
-      where.isActive = isActive;
+    if (scope === 'universitas') {
+      where.studyProgramId = null;
+      where.facultyId = null;
+    } else if (scope === 'fakultas') {
+      where.studyProgramId = null;
+      where.NOT = { facultyId: null };
+    } else if (scope === 'prodi') {
+      where.facultyId = null;
+      where.NOT = { studyProgramId: null };
     }
 
     const [data, total] = await Promise.all([
       this.prisma.curriculum.findMany({
-        where,
-        skip,
-        take: limit,
+        where, skip, take: limit,
         orderBy: { [sortBy]: sortOrder },
-        include: {
-          studyProgram: {
-            select: { id: true, code: true, name: true },
-          },
-        },
+        include: curriculumInclude,
       }),
       this.prisma.curriculum.count({ where }),
     ]);
 
-    const mapped = data.map((item) => this.mapToResponse(item));
-    return createPaginatedResult(mapped, total, page, limit);
+    return createPaginatedResult(data.map((i) => this.mapToResponse(i)), total, page, limit);
   }
 
   async findById(id: string): Promise<CurriculumMapped | null> {
     const item = await this.prisma.curriculum.findUnique({
       where: { id },
-      include: {
-        studyProgram: {
-          select: { id: true, code: true, name: true },
-        },
-      },
+      include: curriculumInclude,
     });
-
     return item ? this.mapToResponse(item) : null;
   }
 
-  async findByCode(code: string) {
-    return this.prisma.curriculum.findUnique({
-      where: { code },
+  async findByCode(code: string, studyProgramId?: string) {
+    return this.prisma.curriculum.findFirst({
+      where: { code, ...(studyProgramId ? { studyProgramId } : {}) },
     });
   }
 
   async create(data: CreateCurriculumDto) {
     return this.prisma.curriculum.create({
       data: {
-        studyProgramId: data.studyProgramId,
+        studyProgramId: data.studyProgramId ?? null,
+        facultyId: data.facultyId ?? null,
         code: data.code,
         name: data.name,
         year: data.year,
@@ -109,11 +103,7 @@ export class CurriculumRepository {
         totalSks: data.totalSks,
         isActive: data.isActive ?? true,
       },
-      include: {
-        studyProgram: {
-          select: { id: true, code: true, name: true },
-        },
-      },
+      include: curriculumInclude,
     });
   }
 
@@ -121,7 +111,14 @@ export class CurriculumRepository {
     const updateData: Prisma.CurriculumUpdateInput = {};
 
     if (data.studyProgramId !== undefined) {
-      updateData.studyProgram = { connect: { id: data.studyProgramId } };
+      updateData.studyProgram = data.studyProgramId
+        ? { connect: { id: data.studyProgramId } }
+        : { disconnect: true };
+    }
+    if (data.facultyId !== undefined) {
+      updateData.faculty = data.facultyId
+        ? { connect: { id: data.facultyId } }
+        : { disconnect: true };
     }
     if (data.code !== undefined) updateData.code = data.code;
     if (data.name !== undefined) updateData.name = data.name;
@@ -134,37 +131,40 @@ export class CurriculumRepository {
     return this.prisma.curriculum.update({
       where: { id },
       data: updateData,
-      include: {
-        studyProgram: {
-          select: { id: true, code: true, name: true },
-        },
-      },
+      include: curriculumInclude,
     });
   }
 
   async remove(id: string) {
-    return this.prisma.curriculum.delete({
-      where: { id },
-    });
+    return this.prisma.curriculum.delete({ where: { id } });
   }
 
-  async existsByCode(code: string): Promise<boolean> {
+  async existsByCode(code: string, studyProgramId: string | null, facultyId: string | null, excludeId?: string): Promise<boolean> {
     const count = await this.prisma.curriculum.count({
-      where: { code },
+      where: {
+        code,
+        studyProgramId: studyProgramId ?? null,
+        facultyId: facultyId ?? null,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
     });
     return count > 0;
   }
 
   async studyProgramExists(id: string): Promise<boolean> {
-    const count = await this.prisma.studyProgram.count({
-      where: { id },
-    });
+    const count = await this.prisma.studyProgram.count({ where: { id } });
+    return count > 0;
+  }
+
+  async facultyExists(id: string): Promise<boolean> {
+    const count = await this.prisma.faculty.count({ where: { id } });
     return count > 0;
   }
 
   mapToResponse(item: {
     id: string;
-    studyProgramId: string;
+    studyProgramId: string | null;
+    facultyId: string | null;
     code: string;
     name: string;
     year: number;
@@ -174,11 +174,16 @@ export class CurriculumRepository {
     isActive: boolean;
     createdAt: Date;
     updatedAt: Date;
-    studyProgram: { id: string; code: string; name: string };
+    studyProgram: { id: string; code: string; name: string; facultyId: string } | null;
+    faculty: { id: string; code: string; name: string } | null;
   }): CurriculumMapped {
+    const scope: 'universitas' | 'fakultas' | 'prodi' =
+      item.studyProgramId ? 'prodi' : item.facultyId ? 'fakultas' : 'universitas';
     return {
       id: item.id,
       studyProgramId: item.studyProgramId,
+      facultyId: item.facultyId,
+      scope,
       code: item.code,
       name: item.name,
       year: item.year,
@@ -187,6 +192,7 @@ export class CurriculumRepository {
       totalSks: item.totalSks,
       isActive: item.isActive,
       studyProgram: item.studyProgram,
+      faculty: item.faculty,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };

@@ -117,6 +117,20 @@ export interface Course {
   isActive: boolean;
 }
 
+export interface GraduateProfile {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  vision: string | null;
+  mission: string | null;
+  curriculumYear: number;
+  isActive: boolean;
+  totalCpl: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PaginatedResponse<T> {
   success: boolean;
   statusCode: number;

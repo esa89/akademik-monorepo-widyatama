@@ -125,6 +125,82 @@ entries:
       meta_launch_url: http://localhost:5174
       open_in_new_tab: false
 
+  # OAuth2 Provider for fe-jurusan
+  - model: authentik_providers_oauth2.oauth2provider
+    id: provider-fe-jurusan
+    identifiers:
+      name: Widyatama Jurusan
+    attrs:
+      name: Widyatama Jurusan
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-explicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      client_type: confidential
+      client_id: fe-jurusan
+      client_secret: widyatama-client-secret-change-me-in-production
+      redirect_uris:
+        - url: http://localhost:6174/auth/callback
+          matching_mode: strict
+      allowed_origins:
+        - http://localhost:6174
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      access_token_validity: minutes=10
+      refresh_token_validity: days=30
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, email]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, offline_access]]
+
+  # Application for fe-jurusan
+  - model: authentik_core.application
+    id: app-fe-jurusan
+    identifiers:
+      slug: fe-jurusan
+    attrs:
+      name: Widyatama Jurusan
+      slug: fe-jurusan
+      provider: !KeyOf provider-fe-jurusan
+      meta_launch_url: http://localhost:6174
+      open_in_new_tab: false
+
+  # OAuth2 Provider for fe-akademik
+  - model: authentik_providers_oauth2.oauth2provider
+    id: provider-fe-akademik
+    identifiers:
+      name: Widyatama Akademik
+    attrs:
+      name: Widyatama Akademik
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-explicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      client_type: confidential
+      client_id: fe-akademik
+      client_secret: widyatama-client-secret-change-me-in-production
+      redirect_uris:
+        - url: http://localhost:6175/auth/callback
+          matching_mode: strict
+      allowed_origins:
+        - http://localhost:6175
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      access_token_validity: minutes=10
+      refresh_token_validity: days=30
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, email]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, offline_access]]
+
+  # Application for fe-akademik
+  - model: authentik_core.application
+    id: app-fe-akademik
+    identifiers:
+      slug: fe-akademik
+    attrs:
+      name: Widyatama Akademik
+      slug: fe-akademik
+      provider: !KeyOf provider-fe-akademik
+      meta_launch_url: http://localhost:6175
+      open_in_new_tab: false
+
   # Test User - Dosen
   - model: authentik_core.user
     id: user-dosen-test

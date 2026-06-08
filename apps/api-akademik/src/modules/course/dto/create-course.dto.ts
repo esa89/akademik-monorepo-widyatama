@@ -10,58 +10,46 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateCourseDto {
-  @ApiProperty({
-    description: 'Curriculum ID',
-    example: '550e8400-e29b-41d4-a716-446655440000',
-  })
+  @ApiPropertyOptional({ description: 'Curriculum ID (for prodi-level courses)' })
   @IsString()
   @IsUUID()
-  @IsNotEmpty()
-  curriculumId!: string;
+  @IsOptional()
+  curriculumId?: string;
 
-  @ApiProperty({
-    description: 'Unique Course code',
-    example: 'IF101',
-  })
+  @ApiPropertyOptional({ description: 'Faculty ID (for faculty-level courses)' })
+  @IsString()
+  @IsUUID()
+  @IsOptional()
+  facultyId?: string;
+
+  @ApiPropertyOptional({ description: 'Unique Course code', example: 'IF101' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
   code!: string;
 
-  @ApiProperty({
-    description: 'Course name',
-    example: 'Algoritma dan Pemrograman',
-  })
+  @ApiPropertyOptional({ description: 'Course name', example: 'Algoritma dan Pemrograman' })
   @IsString()
   @IsNotEmpty()
   @MinLength(3)
   @MaxLength(200)
   name!: string;
 
-  @ApiPropertyOptional({
-    description: 'Course description',
-    example: 'Mata kuliah dasar pemrograman komputer',
-  })
+  @ApiPropertyOptional({ description: 'Course description' })
   @IsString()
   @IsOptional()
   description?: string;
 
-  @ApiProperty({
-    description: 'Total SKS (credit units)',
-    example: 3,
-  })
+  @ApiPropertyOptional({ description: 'Total SKS', example: 3 })
   @IsInt()
   @Min(1)
   @Max(6)
   sks!: number;
 
-  @ApiProperty({
-    description: 'Semester number',
-    example: 1,
-  })
+  @ApiPropertyOptional({ description: 'Semester number', example: 1 })
   @IsInt()
   @Min(1)
   @Max(14)

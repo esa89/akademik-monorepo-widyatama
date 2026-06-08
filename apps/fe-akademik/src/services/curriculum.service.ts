@@ -6,6 +6,9 @@ export interface CurriculumQuery {
   limit?: number;
   search?: string;
   studyProgramId?: string;
+  facultyId?: string;
+  scope?: 'universitas' | 'fakultas' | 'prodi';
+  isActive?: boolean;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
 }
@@ -17,10 +20,10 @@ export const curriculumService = {
   getById: (id: string) =>
     api.get<Curriculum>(`/curriculums/${id}`).then((r) => r.data),
 
-  create: (data: { studyProgramId: string; code: string; name: string; description?: string; year: number; totalSemester: number; totalSks: number }) =>
+  create: (data: { studyProgramId?: string; facultyId?: string; code: string; name: string; description?: string; year: number; totalSemester: number; totalSks: number }) =>
     api.post<Curriculum>('/curriculums', data).then((r) => r.data),
 
-  update: (id: string, data: Partial<{ studyProgramId: string; code: string; name: string; description: string; year: number; totalSemester: number; totalSks: number; isActive: boolean }>) =>
+  update: (id: string, data: Partial<{ studyProgramId: string | null; facultyId: string | null; code: string; name: string; description: string; year: number; totalSemester: number; totalSks: number; isActive: boolean }>) =>
     api.put<Curriculum>(`/curriculums/${id}`, data).then((r) => r.data),
 
   remove: (id: string) =>

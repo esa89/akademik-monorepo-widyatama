@@ -6,6 +6,9 @@ import StudyProgramPage from '@/pages/StudyProgramPage';
 import CurriculumPage from '@/pages/CurriculumPage';
 import CoursePage from '@/pages/CoursePage';
 import AcademicSemesterPage from '@/pages/AcademicSemesterPage';
+import LecturerPage from '@/pages/LecturerPage';
+import StudentPage from '@/pages/StudentPage';
+import AcademicClassPage from '@/pages/AcademicClassPage';
 import LoginPage from '@/pages/auth/LoginPage';
 import CallbackPage from '@/pages/auth/CallbackPage';
 import { ProtectedRoute, PublicRoute } from '@/components/auth/ProtectedRoute';
@@ -38,6 +41,9 @@ export const router = createBrowserRouter([
       { path: 'curriculums', element: <CurriculumPage /> },
       { path: 'courses', element: <CoursePage /> },
       { path: 'academic-semesters', element: <AcademicSemesterPage /> },
+      { path: 'lecturers', element: <LecturerPage /> },
+      { path: 'students', element: <StudentPage /> },
+      { path: 'academic-classes', element: <AcademicClassPage /> },
     ],
   },
 ]);
