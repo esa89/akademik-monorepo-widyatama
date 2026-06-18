@@ -9,6 +9,7 @@ import { AcademicClassRepository } from './academic-class.repository';
 import { CreateAcademicClassDto } from './dto/create-academic-class.dto';
 import { UpdateAcademicClassDto } from './dto/update-academic-class.dto';
 import { QueryAcademicClassDto } from './dto/query-academic-class.dto';
+import { ImportGradesDto } from './dto/import-grades.dto';
 
 @Injectable()
 export class AcademicClassService {
@@ -150,5 +151,16 @@ export class AcademicClassService {
     const item = await this.repository.remove(id);
     this.logger.log(`AcademicClass deleted: ${item.id}`);
     return item;
+  }
+
+  async importGrades(classId: string, dto: ImportGradesDto) {
+    this.logger.log(`Importing grades for class ${classId}: ${dto.grades.length} records`);
+
+    const existing = await this.repository.findById(classId);
+    if (!existing) throw new NotFoundException(`AcademicClass with id '${classId}' not found`);
+
+    const result = await this.repository.bulkUpsertGrades(classId, dto.grades);
+    this.logger.log(`Grade import done: ${result.updated} updated, ${result.notFound.length} not found`);
+    return result;
   }
 }

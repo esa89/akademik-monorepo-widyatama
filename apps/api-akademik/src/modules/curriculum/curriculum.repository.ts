@@ -48,7 +48,15 @@ export class CurriculumRepository {
         { name: { contains: search, mode: 'insensitive' } },
       ];
     }
-    if (studyProgramId !== undefined) where.studyProgramId = studyProgramId;
+    if (studyProgramId !== undefined) {
+      // Include prodi-specific curricula AND universitas-level curricula (studyProgramId=null, facultyId=null)
+      const scopeFilter: Prisma.CurriculumWhereInput = {
+        OR: [{ studyProgramId }, { studyProgramId: null, facultyId: null }],
+      };
+      where.AND = Array.isArray(where.AND)
+        ? [...(where.AND as Prisma.CurriculumWhereInput[]), scopeFilter]
+        : [scopeFilter];
+    }
     if (facultyId !== undefined) where.facultyId = facultyId;
     if (year !== undefined) where.year = year;
     if (isActive !== undefined) where.isActive = isActive;

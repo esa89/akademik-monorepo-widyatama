@@ -8,6 +8,8 @@ import { createPaginatedResult, PaginatedResult } from '../../common/dto/paginat
 
 export interface SubCpmkMapped {
   id: string;
+  curriculumId: string;
+  courseId: string;
   cpmkId: string;
   code: string;
   name: string;
@@ -16,7 +18,6 @@ export interface SubCpmkMapped {
   targetPercentage: number;
   isActive: boolean;
   cpmk: { id: string; code: string; name: string };
-  course: { id: string; code: string; name: string };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -27,166 +28,109 @@ export class SubCpmkRepository {
 
   async findAll(query: QuerySubCpmkDto): Promise<PaginatedResult<SubCpmkMapped>> {
     const {
-      page = 1,
-      limit = 10,
-      sortBy = 'orderNumber',
-      sortOrder = 'asc',
-      search,
-      cpmkId,
-      isActive,
+      page = 1, limit = 10, sortBy = 'code', sortOrder = 'asc',
+      search, curriculumId, courseId, cpmkId, isActive,
     } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.SubCpmkWhereInput = {};
-
     if (search) {
       where.OR = [
         { code: { contains: search, mode: 'insensitive' } },
         { name: { contains: search, mode: 'insensitive' } },
       ];
     }
-
-    if (cpmkId !== undefined) {
-      where.cpmkId = cpmkId;
-    }
-
-    if (isActive !== undefined) {
-      where.isActive = isActive;
-    }
+    if (curriculumId) where.curriculumId = curriculumId;
+    if (courseId)     where.courseId = courseId;
+    if (cpmkId)       where.cpmkId = cpmkId;
+    if (isActive !== undefined) where.isActive = isActive;
 
     const [data, total] = await Promise.all([
       this.prisma.subCpmk.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { [sortBy]: sortOrder },
-        include: {
-          cpmk: {
-            select: { id: true, code: true, name: true, courseId: true },
-          },
-        },
+        where, skip, take: limit,
+        orderBy: [{ cpmkId: 'asc' }, { [sortBy]: sortOrder }],
+        include: { cpmk: { select: { id: true, code: true, name: true } } },
       }),
       this.prisma.subCpmk.count({ where }),
     ]);
 
-    const mapped = data.map((item) => this.mapToResponse(item));
-    return createPaginatedResult(mapped, total, page, limit);
+    return createPaginatedResult(data.map((i) => this.mapToResponse(i)), total, page, limit);
   }
 
   async findById(id: string): Promise<SubCpmkMapped | null> {
     const item = await this.prisma.subCpmk.findUnique({
       where: { id },
-      include: {
-        cpmk: {
-          select: { id: true, code: true, name: true, courseId: true },
-        },
-      },
+      include: { cpmk: { select: { id: true, code: true, name: true } } },
     });
-
     return item ? this.mapToResponse(item) : null;
   }
 
-  async findByCodeAndCpmk(code: string, cpmkId: string) {
-    return this.prisma.subCpmk.findUnique({
-      where: { code_cpmkId: { code, cpmkId } },
-    });
-  }
-
-  async create(data: CreateSubCpmkDto) {
-    return this.prisma.subCpmk.create({
-      data: {
-        cpmkId: data.cpmkId,
-        code: data.code,
-        name: data.name,
-        description: data.description,
-        orderNumber: data.orderNumber,
-        targetPercentage: data.targetPercentage,
-        isActive: data.isActive ?? true,
-      },
-      include: {
-        cpmk: {
-          select: { id: true, code: true, name: true, courseId: true },
-        },
-      },
-    });
-  }
-
-  async update(id: string, data: UpdateSubCpmkDto) {
-    const updateData: Prisma.SubCpmkUpdateInput = {};
-
-    if (data.cpmkId !== undefined) updateData.cpmk = { connect: { id: data.cpmkId } };
-    if (data.code !== undefined) updateData.code = data.code;
-    if (data.name !== undefined) updateData.name = data.name;
-    if (data.description !== undefined) updateData.description = data.description;
-    if (data.orderNumber !== undefined) updateData.orderNumber = data.orderNumber;
-    if (data.targetPercentage !== undefined) updateData.targetPercentage = data.targetPercentage;
-    if (data.isActive !== undefined) updateData.isActive = data.isActive;
-
-    return this.prisma.subCpmk.update({
-      where: { id },
-      data: updateData,
-      include: {
-        cpmk: {
-          select: { id: true, code: true, name: true, courseId: true },
-        },
-      },
-    });
-  }
-
-  async remove(id: string) {
-    return this.prisma.subCpmk.delete({
-      where: { id },
-    });
-  }
-
-  async existsByCodeAndCpmk(code: string, cpmkId: string): Promise<boolean> {
+  async existsByCodeInCourse(
+    code: string, courseId: string, cpmkId: string, excludeId?: string,
+  ): Promise<boolean> {
     const count = await this.prisma.subCpmk.count({
-      where: { code, cpmkId },
+      where: { code, courseId, cpmkId, ...(excludeId ? { id: { not: excludeId } } : {}) },
     });
     return count > 0;
   }
 
   async cpmkExists(id: string): Promise<boolean> {
-    const count = await this.prisma.cpmk.count({
-      where: { id },
-    });
+    const count = await this.prisma.cpmk.count({ where: { id } });
     return count > 0;
   }
 
+  async create(data: CreateSubCpmkDto) {
+    return this.prisma.subCpmk.create({
+      data: {
+        curriculumId: data.curriculumId,
+        courseId: data.courseId,
+        cpmkId: data.cpmkId,
+        code: data.code,
+        name: data.name,
+        description: data.description,
+        orderNumber: data.orderNumber ?? 0,
+        targetPercentage: data.targetPercentage ?? 0,
+        isActive: data.isActive ?? true,
+      },
+      include: { cpmk: { select: { id: true, code: true, name: true } } },
+    });
+  }
+
+  async update(id: string, data: UpdateSubCpmkDto) {
+    const updateData: Prisma.SubCpmkUpdateInput = {};
+    if (data.curriculumId !== undefined)     updateData.curriculumId = data.curriculumId;
+    if (data.courseId !== undefined)         updateData.courseId = data.courseId;
+    if (data.cpmkId !== undefined)           updateData.cpmk = { connect: { id: data.cpmkId } };
+    if (data.code !== undefined)             updateData.code = data.code;
+    if (data.name !== undefined)             updateData.name = data.name;
+    if (data.description !== undefined)      updateData.description = data.description;
+    if (data.orderNumber !== undefined)      updateData.orderNumber = data.orderNumber;
+    if (data.targetPercentage !== undefined) updateData.targetPercentage = data.targetPercentage;
+    if (data.isActive !== undefined)         updateData.isActive = data.isActive;
+
+    return this.prisma.subCpmk.update({
+      where: { id },
+      data: updateData,
+      include: { cpmk: { select: { id: true, code: true, name: true } } },
+    });
+  }
+
+  async remove(id: string) {
+    return this.prisma.subCpmk.delete({ where: { id } });
+  }
+
   mapToResponse(item: {
-    id: string;
-    cpmkId: string;
-    code: string;
-    name: string;
-    description: string | null;
-    orderNumber: number;
-    targetPercentage: number;
-    isActive: boolean;
-    createdAt: Date;
-    updatedAt: Date;
-    cpmk: { id: string; code: string; name: string; courseId: string };
+    id: string; curriculumId: string; courseId: string; cpmkId: string; code: string; name: string;
+    description: string | null; orderNumber: number; targetPercentage: number;
+    isActive: boolean; createdAt: Date; updatedAt: Date;
+    cpmk: { id: string; code: string; name: string };
   }): SubCpmkMapped {
     return {
-      id: item.id,
-      cpmkId: item.cpmkId,
-      code: item.code,
-      name: item.name,
-      description: item.description,
-      orderNumber: item.orderNumber,
-      targetPercentage: item.targetPercentage,
-      isActive: item.isActive,
-      cpmk: {
-        id: item.cpmk.id,
-        code: item.cpmk.code,
-        name: item.cpmk.name,
-      },
-      course: {
-        id: item.cpmk.courseId,
-        code: '',
-        name: '',
-      },
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
+      id: item.id, curriculumId: item.curriculumId, courseId: item.courseId, cpmkId: item.cpmkId,
+      code: item.code, name: item.name, description: item.description,
+      orderNumber: item.orderNumber, targetPercentage: item.targetPercentage,
+      isActive: item.isActive, cpmk: item.cpmk,
+      createdAt: item.createdAt, updatedAt: item.updatedAt,
     };
   }
 }

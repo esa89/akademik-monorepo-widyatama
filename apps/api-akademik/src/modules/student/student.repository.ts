@@ -157,6 +157,58 @@ export class StudentRepository {
   async curriculumExists(id: string)      { return !!(await this.prisma.curriculum.count({ where: { id } })); }
   async academicSemesterExists(id: string){ return !!(await this.prisma.academicSemester.count({ where: { id } })); }
 
+  async getTranscript(studentId: string) {
+    const enrollments = await this.prisma.classStudent.findMany({
+      where: { studentId },
+      include: {
+        class: {
+          include: {
+            course:   { select: { id: true, code: true, name: true, sks: true, semester: true } },
+            semester: { select: { id: true, code: true, name: true, academicYear: true, semesterType: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const courses = enrollments.map((e) => ({
+      classStudentId: e.id,
+      classId:        e.classId,
+      semesterName:   e.class.semester?.name ?? '—',
+      academicYear:   e.class.semester?.academicYear ?? '—',
+      courseCode:     e.class.course?.code ?? '—',
+      courseName:     e.class.course?.name ?? '—',
+      sks:            e.class.course?.sks ?? 0,
+      kehadiran:      e.kehadiran,
+      uts:            e.uts,
+      uas:            e.uas,
+      quiz:           e.quiz,
+      tugas:          e.tugas,
+      nilaiAkhir:     e.nilaiAkhir,
+      grade:          e.grade,
+      gradePoint:     this.gradeToPoint(e.grade),
+    }));
+
+    const completed = courses.filter((c) => c.grade && c.grade !== 'E');
+    const totalSks  = completed.reduce((s, c) => s + c.sks, 0);
+    const totalMutu = completed.reduce((s, c) => s + (c.gradePoint ?? 0) * c.sks, 0);
+    const ipk       = totalSks > 0 ? +(totalMutu / totalSks).toFixed(2) : 0;
+
+    return {
+      data: {
+        totalCourses: courses.length,
+        totalSksLulus: totalSks,
+        ipk,
+        courses,
+      },
+    };
+  }
+
+  private gradeToPoint(grade: string | null): number {
+    const map: Record<string, number> = { A: 4, B: 3, C: 2, D: 1, E: 0 };
+    return grade ? (map[grade] ?? 0) : 0;
+  }
+
   mapToResponse(item: {
     id: string; nim: string; name: string; birthPlace: string | null;
     birthDate: Date | null; gender: string; agama: string | null; email: string | null;

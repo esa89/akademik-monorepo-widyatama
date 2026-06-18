@@ -1,73 +1,60 @@
 import {
-  IsString,
-  IsNotEmpty,
-  IsOptional,
-  IsBoolean,
-  IsUUID,
-  IsInt,
-  Min,
-  Max,
-  MaxLength,
-  MinLength,
+  IsString, IsNotEmpty, IsOptional, IsBoolean,
+  IsUUID, IsInt, Min, Max, MaxLength, MinLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateSubCpmkDto {
-  @ApiProperty({
-    description: 'CPMK ID',
-    example: '550e8400-e29b-41d4-a716-446655440000',
-  })
+  @ApiProperty({ description: 'Curriculum ID (untuk indexing)' })
+  @IsString()
+  @IsNotEmpty()
+  curriculumId!: string;
+
+  @ApiProperty({ description: 'Course ID (mata kuliah)', example: '550e8400-e29b-41d4-a716-446655440000' })
+  @IsString()
+  @IsUUID()
+  @IsNotEmpty()
+  courseId!: string;
+
+  @ApiProperty({ description: 'CPMK ID', example: '550e8400-e29b-41d4-a716-446655440000' })
   @IsString()
   @IsUUID()
   @IsNotEmpty()
   cpmkId!: string;
 
-  @ApiProperty({
-    description: 'Sub CPMK code (unique per CPMK)',
-    example: 'LO1.1',
-  })
+  @ApiProperty({ description: 'Kode Sub CPMK (unik per CPMK)', example: 'SCPMK01' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
   code!: string;
 
-  @ApiProperty({
-    description: 'Sub CPMK name',
-    example: 'Mampu membuat flowchart',
-  })
+  @ApiProperty({ description: 'Isi Sub CPMK', example: 'Mampu membuat flowchart' })
   @IsString()
   @IsNotEmpty()
   @MinLength(3)
-  @MaxLength(200)
+  @MaxLength(500)
   name!: string;
 
-  @ApiPropertyOptional({
-    description: 'Sub CPMK description',
-    example: 'Mahasiswa mampu membuat flowchart sederhana',
-  })
+  @ApiPropertyOptional({ description: 'Deskripsi tambahan' })
   @IsString()
   @IsOptional()
   description?: string;
 
-  @ApiProperty({
-    description: 'Order number',
-    example: 1,
-  })
+  @ApiPropertyOptional({ description: 'Nomor urutan', example: 1 })
   @IsInt()
-  @Min(1)
-  orderNumber!: number;
+  @Min(0)
+  @IsOptional()
+  orderNumber?: number;
 
-  @ApiProperty({
-    description: 'Target percentage (1-100)',
-    example: 75,
-  })
+  @ApiPropertyOptional({ description: 'Target persentase (0-100)', example: 0 })
   @IsInt()
-  @Min(1)
+  @Min(0)
   @Max(100)
-  targetPercentage!: number;
+  @IsOptional()
+  targetPercentage?: number;
 
-  @ApiPropertyOptional({ description: 'Active status', example: true })
+  @ApiPropertyOptional({ description: 'Status aktif', example: true })
   @IsBoolean()
   @IsOptional()
-  isActive?: boolean = true;
+  isActive?: boolean;
 }

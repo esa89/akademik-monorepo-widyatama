@@ -248,3 +248,19 @@ entries:
       attributes:
         settings:
           locale: id
+
+  # Test User - Kaprodi
+  - model: authentik_core.user
+    id: user-kaprodi-test
+    identifiers:
+      username: kaprodi.test
+    attrs:
+      username: kaprodi.test
+      email: kaprodi.test@widyatama.ac.id
+      name: Kaprodi Test
+      type: internal
+      groups:
+        - !KeyOf group-kaprodi
+      attributes:
+        settings:
+          locale: id

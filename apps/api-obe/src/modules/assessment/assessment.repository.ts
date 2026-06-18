@@ -80,7 +80,6 @@ export class AssessmentRepository {
                   id: true,
                   code: true,
                   name: true,
-                  courseId: true,
                 },
               },
             },
@@ -104,12 +103,7 @@ export class AssessmentRepository {
             code: true,
             name: true,
             cpmk: {
-              select: {
-                id: true,
-                code: true,
-                name: true,
-                courseId: true,
-              },
+              select: { id: true, code: true, name: true },
             },
           },
         },
@@ -139,12 +133,7 @@ export class AssessmentRepository {
             code: true,
             name: true,
             cpmk: {
-              select: {
-                id: true,
-                code: true,
-                name: true,
-                courseId: true,
-              },
+              select: { id: true, code: true, name: true },
             },
           },
         },
@@ -175,12 +164,7 @@ export class AssessmentRepository {
             code: true,
             name: true,
             cpmk: {
-              select: {
-                id: true,
-                code: true,
-                name: true,
-                courseId: true,
-              },
+              select: { id: true, code: true, name: true },
             },
           },
         },
@@ -244,9 +228,10 @@ export class AssessmentRepository {
       id: string;
       code: string;
       name: string;
-      cpmk: { id: string; code: string; name: string; courseId: string };
+      cpmk: { id: string; code: string; name: string } | null;
     };
   }): AssessmentMapped {
+    const cpmk = item.subCpmk.cpmk;
     return {
       id: item.id,
       subCpmkId: item.subCpmkId,
@@ -264,15 +249,11 @@ export class AssessmentRepository {
         name: item.subCpmk.name,
       },
       cpmk: {
-        id: item.subCpmk.cpmk.id,
-        code: item.subCpmk.cpmk.code,
-        name: item.subCpmk.cpmk.name,
+        id: cpmk?.id ?? '',
+        code: cpmk?.code ?? '',
+        name: cpmk?.name ?? '',
       },
-      course: {
-        id: item.subCpmk.cpmk.courseId,
-        code: '',
-        name: '',
-      },
+      course: { id: '', code: '', name: '' },
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };

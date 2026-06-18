@@ -148,6 +148,13 @@ export interface ClassStudentItem {
   id: string;
   classId: string;
   studentId: string;
+  kehadiran?: number | null;
+  uts?: number | null;
+  uas?: number | null;
+  quiz?: number | null;
+  tugas?: number | null;
+  nilaiAkhir?: number | null;
+  grade?: string | null;
   student?: {
     id: string;
     nim: string;

@@ -12,7 +12,7 @@ export class CreateGraduateProfileDto {
   @IsString()
   @IsNotEmpty()
   @MinLength(3)
-  @MaxLength(200)
+  @MaxLength(500)
   name!: string;
 
   @ApiPropertyOptional({

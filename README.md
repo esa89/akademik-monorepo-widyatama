@@ -78,13 +78,14 @@ Blueprint membuat user tapi tidak bisa set password secara otomatis. Lakukan via
    - `admin.akademik`
    - `dosen.test`
    - `mahasiswa.test`
+   - `kaprodi.test`
 
 ### Langkah 5 — Akses aplikasi
 
 | Aplikasi | URL | Login dengan |
 |----------|-----|--------------|
 | **Admin Akademik** | http://localhost:6175 | `admin.akademik` |
-| **Portal Jurusan** | http://localhost:6174 | `dosen.test` |
+| **Portal Jurusan** | http://localhost:6174 | `kaprodi.test` |
 | **Portal Dosen** | http://localhost:6173 | `dosen.test` |
 | **Authentik Admin** | http://localhost:9010/if/admin/ | `admin@widyatama.ac.id` |
 
@@ -112,12 +113,13 @@ pnpm docker:logs authentik-server
 
 ## Akun & Kredensial Default
 
-| Akun | Username | Password | Role |
-|------|----------|----------|------|
-| Admin Authentik | `admin@widyatama.ac.id` | `WidyatamaAdmin123!` | Superuser Authentik |
-| Admin Akademik | `admin.akademik` | `TestPassword123!` | admin_akademik |
-| Dosen Test | `dosen.test` | `TestPassword123!` | dosen |
-| Mahasiswa Test | `mahasiswa.test` | `TestPassword123!` | mahasiswa |
+| Akun | Username | Password | Role | Portal |
+|------|----------|----------|------|--------|
+| Admin Authentik | `admin@widyatama.ac.id` | `WidyatamaAdmin123!` | Superuser Authentik | Authentik Admin |
+| Admin Akademik | `admin.akademik` | `TestPassword123!` | admin_akademik | fe-akademik |
+| Kaprodi Test | `kaprodi.test` | `TestPassword123!` | kaprodi | fe-jurusan |
+| Dosen Test | `dosen.test` | `TestPassword123!` | dosen | fe-dosen |
+| Mahasiswa Test | `mahasiswa.test` | `TestPassword123!` | mahasiswa | — |
 
 **OAuth2 Client Secret** (semua app): `widyatama-client-secret-change-me-in-production`
 

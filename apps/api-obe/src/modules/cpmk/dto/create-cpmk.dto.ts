@@ -3,9 +3,6 @@ import {
   IsNotEmpty,
   IsOptional,
   IsBoolean,
-  IsUUID,
-  IsInt,
-  Min,
   MaxLength,
   MinLength,
 } from 'class-validator';
@@ -13,48 +10,30 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateCpmkDto {
   @ApiProperty({
-    description: 'Course ID from api-akademik',
+    description: 'Curriculum ID (from api-akademik, no FK constraint)',
     example: '550e8400-e29b-41d4-a716-446655440000',
   })
   @IsString()
-  @IsUUID()
   @IsNotEmpty()
-  courseId!: string;
+  curriculumId!: string;
 
-  @ApiProperty({
-    description: 'CPMK code (unique per course)',
-    example: 'CPMK-01',
-  })
+  @ApiProperty({ description: 'CPMK code (unique per curriculum)', example: 'CPMK011' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
   code!: string;
 
-  @ApiProperty({
-    description: 'CPMK name',
-    example: 'Mampu membuat algoritma dasar',
-  })
+  @ApiProperty({ description: 'CPMK content / description', example: 'Mampu menganalisis...' })
   @IsString()
   @IsNotEmpty()
   @MinLength(3)
-  @MaxLength(200)
+  @MaxLength(1000)
   name!: string;
 
-  @ApiPropertyOptional({
-    description: 'CPMK description',
-    example: 'Mahasiswa mampu merancang algoritma sederhana',
-  })
+  @ApiPropertyOptional({ description: 'Additional notes', example: 'Catatan tambahan' })
   @IsString()
   @IsOptional()
   description?: string;
-
-  @ApiProperty({
-    description: 'Order number',
-    example: 1,
-  })
-  @IsInt()
-  @Min(1)
-  orderNumber!: number;
 
   @ApiPropertyOptional({ description: 'Active status', example: true })
   @IsBoolean()

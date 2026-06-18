@@ -69,6 +69,12 @@ export class StudentService {
     return item;
   }
 
+  async getTranscript(id: string) {
+    const student = await this.repository.findById(id);
+    if (!student) throw new NotFoundException(`Mahasiswa dengan id '${id}' tidak ditemukan`);
+    return this.repository.getTranscript(id);
+  }
+
   private async validateRelations(data: Partial<CreateStudentDto>) {
     if (data.facultyId) {
       const ok = await this.repository.facultyExists(data.facultyId);

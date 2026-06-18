@@ -38,6 +38,17 @@ export class QuerySubCpmkDto {
   @IsOptional()
   search?: string;
 
+  @ApiPropertyOptional({ description: 'Filter by curriculum ID' })
+  @IsString()
+  @IsOptional()
+  curriculumId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by course ID' })
+  @IsString()
+  @IsUUID()
+  @IsOptional()
+  courseId?: string;
+
   @ApiPropertyOptional({
     description: 'Filter by CPMK ID',
     example: '550e8400-e29b-41d4-a716-446655440000',

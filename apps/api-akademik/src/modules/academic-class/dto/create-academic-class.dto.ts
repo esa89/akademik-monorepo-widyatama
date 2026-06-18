@@ -8,7 +8,6 @@ import {
   Min,
   Max,
   MaxLength,
-  MinLength,
   IsArray,
   IsEnum,
   ValidateNested,
@@ -46,10 +45,9 @@ export class CreateAcademicClassDto {
   @MaxLength(50)
   code!: string;
 
-  @ApiProperty({ description: 'Class name', example: 'Algoritma dan Pemrograman - Kelas A' })
+  @ApiProperty({ description: 'Class name', example: 'A' })
   @IsString()
   @IsNotEmpty()
-  @MinLength(3)
   @MaxLength(200)
   name!: string;
 

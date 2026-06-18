@@ -29,12 +29,12 @@ export interface CplMappingSummary {
 
 export interface Cpmk {
   id: string;
+  curriculumId: string;
   code: string;
   name: string;
   description: string | null;
-  orderNumber: number;
   isActive: boolean;
-  course: CourseSummary;
+  totalCpl: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -51,6 +51,9 @@ export interface CpmkSummary {
 
 export interface SubCpmk {
   id: string;
+  curriculumId: string;
+  courseId: string;
+  cpmkId: string;
   code: string;
   name: string;
   description: string | null;
@@ -58,7 +61,6 @@ export interface SubCpmk {
   targetPercentage: number;
   isActive: boolean;
   cpmk: CpmkSummary;
-  course: CourseSummary;
   createdAt: string;
   updatedAt: string;
 }
@@ -129,6 +131,208 @@ export interface GraduateProfile {
   totalCpl: number;
   createdAt: string;
   updatedAt: string;
+}
+
+// ─── Curriculum (from api-akademik) ────────────────────────────────────────────
+
+export interface Curriculum {
+  id: string;
+  code: string;
+  name: string;
+  year: number;
+  description: string | null;
+  totalSemester: number;
+  totalSks: number;
+  isActive: boolean;
+  studyProgram: { id: string; code: string; name: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── VisiMisi ─────────────────────────────────────────────────────────────────
+
+export type VisiMisiType = 'VISI' | 'MISI';
+
+export interface VisiMisi {
+  id: string;
+  type: VisiMisiType;
+  content: string;
+  curriculumYear: number;
+  orderNumber: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── CPL-Profile Mapping ──────────────────────────────────────────────────────
+
+export interface CplSummary {
+  id: string;
+  code: string;
+  name: string;
+  category: CplCategory;
+  curriculumYear: number;
+  description: string | null;
+}
+
+export interface GraduateProfileSummary {
+  id: string;
+  code: string;
+  name: string;
+  curriculumYear: number;
+  description: string | null;
+}
+
+export interface MappingPair {
+  cplId: string;
+  graduateProfileId: string;
+}
+
+export interface CplProfileMatrix {
+  cpls: CplSummary[];
+  graduateProfiles: GraduateProfileSummary[];
+  mappings: MappingPair[];
+}
+
+// ─── CPL-BK Mapping ──────────────────────────────────────────────────────────
+
+export interface BkSummary {
+  id: string;
+  code: string;
+  name: string;
+  curriculumId: string;
+}
+
+export interface CplBkMappingPair {
+  cplId: string;
+  bodyOfKnowledgeId: string;
+}
+
+export interface CplBkMatrix {
+  cpls: CplSummary[];
+  bodyOfKnowledges: BkSummary[];
+  mappings: CplBkMappingPair[];
+}
+
+// ─── BK-Course Mapping ───────────────────────────────────────────────────────
+
+export interface BkCourseMappingPair {
+  bodyOfKnowledgeId: string;
+  courseId: string;
+}
+
+export interface BkCourseMatrix {
+  bodyOfKnowledges: BkSummary[];
+  mappings: BkCourseMappingPair[];
+}
+
+// ─── Body of Knowledge ───────────────────────────────────────────────────────
+
+export interface BodyOfKnowledge {
+  id: string;
+  curriculumId: string;
+  code: string;
+  name: string;
+  reference: string | null;
+  description: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── CPL-CPMK Mapping Matrix ──────────────────────────────────────────────────
+
+export interface CplCpmkMappingPair {
+  cpmkId: string;
+  cplId: string;
+}
+
+export interface CplCpmkMatrixCpl {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  curriculumYear: number;
+}
+
+export interface CplCpmkMatrixCpmk {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface CplCpmkMatrix {
+  cpls: CplCpmkMatrixCpl[];
+  cpmks: CplCpmkMatrixCpmk[];
+  mappings: CplCpmkMappingPair[];
+  totalMapped: number;
+}
+
+// ─── CPMK-Course Mapping Matrix ──────────────────────────────────────────────
+
+export interface CpmkMatrixRow {
+  id: string;
+  code: string;
+  name: string;
+  courseIds: string[];
+  cpls: { id: string; code: string; name: string }[];
+}
+
+export interface CplMatrixRow {
+  cpl: {
+    id: string;
+    code: string;
+    name: string;
+    description: string | null;
+    curriculumYear: number;
+  };
+  cpmks: CpmkMatrixRow[];
+}
+
+export interface CpmkCplMkMatrix {
+  matrix: CplMatrixRow[];
+  unmappedCpmks: CpmkMatrixRow[];
+  totalCpl: number;
+  totalCpmk: number;
+  mappedToCpl: number;
+  mappedToMk: number;
+}
+
+// ─── Assessment Component ─────────────────────────────────────────────────────
+
+export interface AssessmentComponent {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Course CPMK Assessment Weight ───────────────────────────────────────────
+
+export interface CourseCpmkWeight {
+  id: string;
+  courseId: string;
+  cpmkId: string;
+  assessmentComponentId: string;
+  weight: number;
+  createdAt: string;
+  updatedAt: string;
+  cpmk: { id: string; code: string; name: string };
+  assessmentComponent: { id: string; code: string; name: string };
+}
+
+export interface WeightEntry {
+  cpmkId: string;
+  assessmentComponentId: string;
+  weight: number;
+}
+
+export interface BulkSaveWeightRequest {
+  courseId: string;
+  weights: WeightEntry[];
 }
 
 export interface PaginatedResponse<T> {

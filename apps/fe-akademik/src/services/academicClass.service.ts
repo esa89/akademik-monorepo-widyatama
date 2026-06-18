@@ -24,6 +24,17 @@ export interface AcademicClassPayload {
   studentIds?: string[];
 }
 
+export interface StudentGradePayload {
+  nim: string;
+  kehadiran?: number;
+  uts?: number;
+  uas?: number;
+  quiz?: number;
+  tugas?: number;
+  nilaiAkhir?: number;
+  grade?: string;
+}
+
 export const academicClassService = {
   getAll: (params: AcademicClassQuery) =>
     api.get<PaginatedResponse<AcademicClass>>('/academic-classes', { params }).then((r) => r.data),
@@ -39,4 +50,7 @@ export const academicClassService = {
 
   remove: (id: string) =>
     api.delete(`/academic-classes/${id}`).then((r) => r.data),
+
+  importGrades: (classId: string, grades: StudentGradePayload[]) =>
+    api.patch<{ updated: number; notFound: string[] }>(`/academic-classes/${classId}/grades`, { grades }).then((r) => r.data),
 };

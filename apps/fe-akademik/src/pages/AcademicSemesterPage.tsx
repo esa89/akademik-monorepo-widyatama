@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { DataTable, Input, Button, Drawer, Switch } from '@widyatama/ui';
+import { DataTable, Input, Button, Drawer } from '@widyatama/ui';
 import type { DataTableOptions, Header } from '@widyatama/ui';
 import { PageHeader } from '@/components/common/PageHeader';
 import { StatCard } from '@/components/common/StatCard';
-import { StatusBadge } from '@/components/common/StatusBadge';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { useDebounce } from '@/hooks/useDebounce';
 import { academicSemesterService } from '@/services/academicSemester.service';
@@ -121,12 +120,6 @@ export default function AcademicSemesterPage() {
       setConfirmOpen(false);
       showToast('success', 'Semester akademik berhasil dihapus.');
     },
-  });
-
-  const toggleStatusMutation = useMutation({
-    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
-      academicSemesterService.update(id, { isActive } as any),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['academic-semesters'] }),
   });
 
   const setCurrentMutation = useMutation({
@@ -288,17 +281,9 @@ export default function AcademicSemesterPage() {
         : <span className="text-xs text-gray-400">—</span>,
     },
     {
-      key: 'isActive', title: 'Status',
-      render: (item) => <StatusBadge isActive={item.isActive} />,
-    },
-    {
       key: 'id', title: 'Aksi',
       render: (item) => (
         <div className="flex items-center gap-1">
-          <Switch
-            checked={item.isActive}
-            onChange={(v) => toggleStatusMutation.mutate({ id: item.id, isActive: v })}
-          />
           {!item.isCurrent && (
             <button
               onClick={(e) => { e.stopPropagation(); setCurrentMutation.mutate(item.id); }}

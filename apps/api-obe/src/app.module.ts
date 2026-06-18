@@ -9,6 +9,15 @@ import { CpmkModule } from './modules/cpmk/cpmk.module';
 import { SubCpmkModule } from './modules/sub-cpmk/sub-cpmk.module';
 import { AssessmentModule } from './modules/assessment/assessment.module';
 import { RubricModule } from './modules/rubric/rubric.module';
+import { VisiMisiModule } from './modules/visi-misi/visi-misi.module';
+import { CplProfileMappingModule } from './modules/cpl-profile-mapping/cpl-profile-mapping.module';
+import { BodyOfKnowledgeModule } from './modules/body-of-knowledge/body-of-knowledge.module';
+import { CplBkMappingModule } from './modules/cpl-bk-mapping/cpl-bk-mapping.module';
+import { BkCourseMappingModule } from './modules/bk-course-mapping/bk-course-mapping.module';
+import { CpmkCourseMappingModule } from './modules/cpmk-course-mapping/cpmk-course-mapping.module';
+import { CpmkCplMappingModule } from './modules/cpmk-cpl-mapping/cpmk-cpl-mapping.module';
+import { AssessmentComponentModule } from './modules/assessment-component/assessment-component.module';
+import { CourseCpmkWeightModule } from './modules/course-cpmk-weight/course-cpmk-weight.module';
 
 @Module({
   imports: [
@@ -25,6 +34,15 @@ import { RubricModule } from './modules/rubric/rubric.module';
     SubCpmkModule,
     AssessmentModule,
     RubricModule,
+    VisiMisiModule,
+    CplProfileMappingModule,
+    BodyOfKnowledgeModule,
+    CplBkMappingModule,
+    BkCourseMappingModule,
+    CpmkCourseMappingModule,
+    CpmkCplMappingModule,
+    AssessmentComponentModule,
+    CourseCpmkWeightModule,
   ],
 })
 export class AppModule {}

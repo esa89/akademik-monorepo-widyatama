@@ -314,10 +314,18 @@ model ClassLecturer {
 }
 
 model ClassStudent {
-  id        String   @id @default(uuid())
-  classId   String
-  studentId String
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  classId    String
+  studentId  String
+  kehadiran  Float?
+  uts        Float?
+  uas        Float?
+  quiz       Float?
+  tugas      Float?
+  nilaiAkhir Float?
+  grade      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   class   AcademicClass @relation(fields: [classId], references: [id], onDelete: Cascade)
   student Student       @relation(fields: [studentId], references: [id])

@@ -54,10 +54,10 @@ export class CpmkController {
     description: 'Search by code or name',
   })
   @ApiQuery({
-    name: 'courseId',
+    name: 'curriculumId',
     required: false,
     type: String,
-    description: 'Filter by Course ID',
+    description: 'Filter by Curriculum ID',
   })
   @ApiQuery({
     name: 'isActive',
@@ -69,7 +69,7 @@ export class CpmkController {
     name: 'sortBy',
     required: false,
     type: String,
-    description: 'Sort field (code, name, orderNumber, createdAt)',
+    description: 'Sort field (code, name, createdAt)',
   })
   @ApiQuery({
     name: 'sortOrder',

@@ -99,8 +99,20 @@ export default function LoginPage() {
   useEffect(() => { const t = setTimeout(() => setEntered(true), 60); return () => clearTimeout(t); }, []);
 
   const urlParams = new URLSearchParams(window.location.search);
-  const returnTo = urlParams.get('return_to') || '';
-  const state = urlParams.get('state') || '';
+  const returnTo  = urlParams.get('return_to') || '';
+  const state     = urlParams.get('state') || '';
+  const nonce     = urlParams.get('nonce') || '';
+
+  // Derive the client_id that originally started the OIDC flow
+  const clientId = urlParams.get('client_id') || 'fe-dosen';
+
+  // Map of client_id → portal URL (for fallback when no return_to)
+  const clientPortalMap: Record<string, string> = {
+    'fe-dosen':         'http://localhost:6173',
+    'fe-akademik':      'http://localhost:6175',
+    'fe-jurusan':       'http://localhost:6174',
+    'fe-mahasiswa':     'http://localhost:5175',
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,48 +123,25 @@ export default function LoginPage() {
       const response = await fetch(`${API_IDENTITY_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: email, password }),
+        body: JSON.stringify({ username: email, password, nonce, clientId }),
       });
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Login failed');
+      if (!response.ok) throw new Error(data.message || data.error || 'Login gagal');
 
-      localStorage.setItem('access_token', data.access_token);
-      localStorage.setItem('refresh_token', data.refresh_token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-
-      const userRoles: string[] = data.user?.roles || [];
-      const rolePortalMap: Record<string, string> = {
-        dosen: 'http://localhost:6173',
-        mahasiswa: 'http://localhost:5175',
-        admin_akademik: 'http://localhost:6175',
-        jurusan: 'http://localhost:6174',
-        kaprodi: 'http://localhost:6174',
-      };
-      const correctPortal = userRoles.map(r => rolePortalMap[r]).find(url => url) || 'http://localhost:6173';
-
-      const mockCode = data.user?.username === 'admin.akademik'
-        ? 'mock-code-admin.akademik'
-        : data.user?.username === 'mahasiswa.test'
-        ? 'mock-code-mahasiswa.test'
-        : 'mock-code-dosen.test';
+      // api-identity now returns { success, code } — use that code for the callback
+      const authCode = data.code as string;
+      if (!authCode) throw new Error('Server tidak mengembalikan authorization code');
 
       if (returnTo) {
         const returnUrl = new URL(decodeURIComponent(returnTo));
-        const requestedPortal = returnUrl.origin;
-        if (userRoles.some(r => rolePortalMap[r] === requestedPortal)) {
-          returnUrl.searchParams.set('code', mockCode);
-          if (state) returnUrl.searchParams.set('state', state);
-          window.location.href = returnUrl.toString();
-        } else {
-          const targetUrl = new URL(`${correctPortal}/auth/callback`);
-          targetUrl.searchParams.set('code', mockCode);
-          if (state) targetUrl.searchParams.set('state', state);
-          window.location.href = targetUrl.toString();
-        }
+        returnUrl.searchParams.set('code', authCode);
+        if (state) returnUrl.searchParams.set('state', state);
+        window.location.href = returnUrl.toString();
       } else {
-        const targetUrl = new URL(`${correctPortal}/auth/callback`);
-        targetUrl.searchParams.set('code', mockCode);
+        const portalBase = clientPortalMap[clientId] || 'http://localhost:6173';
+        const targetUrl  = new URL(`${portalBase}/auth/callback`);
+        targetUrl.searchParams.set('code', authCode);
         if (state) targetUrl.searchParams.set('state', state);
         window.location.href = targetUrl.toString();
       }

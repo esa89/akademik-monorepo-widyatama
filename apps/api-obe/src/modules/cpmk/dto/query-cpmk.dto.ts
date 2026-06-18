@@ -6,12 +6,11 @@ import {
   Min,
   Max,
   IsIn,
-  IsUUID,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
-const ALLOWED_SORT_BY = ['code', 'name', 'orderNumber', 'createdAt'] as const;
+const ALLOWED_SORT_BY = ['code', 'name', 'createdAt'] as const;
 type AllowedSortBy = (typeof ALLOWED_SORT_BY)[number];
 
 export class QueryCpmkDto {
@@ -30,22 +29,15 @@ export class QueryCpmkDto {
   @Max(100)
   limit?: number = 10;
 
-  @ApiPropertyOptional({
-    description: 'Search by code or name',
-    example: 'algoritma',
-  })
+  @ApiPropertyOptional({ description: 'Search by code or name', example: 'CPMK01' })
   @IsString()
   @IsOptional()
   search?: string;
 
-  @ApiPropertyOptional({
-    description: 'Filter by Course ID',
-    example: '550e8400-e29b-41d4-a716-446655440000',
-  })
+  @ApiPropertyOptional({ description: 'Filter by Curriculum ID' })
   @IsString()
-  @IsUUID()
   @IsOptional()
-  courseId?: string;
+  curriculumId?: string;
 
   @ApiPropertyOptional({ description: 'Filter by active status', example: true })
   @IsBoolean()
@@ -53,20 +45,12 @@ export class QueryCpmkDto {
   @IsOptional()
   isActive?: boolean;
 
-  @ApiPropertyOptional({
-    description: 'Sort field',
-    enum: ALLOWED_SORT_BY,
-    default: 'orderNumber',
-  })
+  @ApiPropertyOptional({ description: 'Sort field', enum: ALLOWED_SORT_BY, default: 'code' })
   @IsIn(ALLOWED_SORT_BY)
   @IsOptional()
-  sortBy?: AllowedSortBy = 'orderNumber';
+  sortBy?: AllowedSortBy = 'code';
 
-  @ApiPropertyOptional({
-    description: 'Sort direction',
-    enum: ['asc', 'desc'],
-    default: 'asc',
-  })
+  @ApiPropertyOptional({ description: 'Sort direction', enum: ['asc', 'desc'], default: 'asc' })
   @IsIn(['asc', 'desc'])
   @IsOptional()
   sortOrder?: 'asc' | 'desc' = 'asc';

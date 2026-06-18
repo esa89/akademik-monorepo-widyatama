@@ -262,10 +262,11 @@ export class RubricRepository {
         id: string;
         code: string;
         name: string;
-        cpmk: { id: string; code: string; name: string };
+        cpmk: { id: string; code: string; name: string } | null;
       };
     };
   }): RubricMapped {
+    const cpmk = item.assessment.subCpmk.cpmk;
     return {
       id: item.id,
       assessmentId: item.assessmentId,
@@ -287,9 +288,9 @@ export class RubricRepository {
         name: item.assessment.subCpmk.name,
       },
       cpmk: {
-        id: item.assessment.subCpmk.cpmk.id,
-        code: item.assessment.subCpmk.cpmk.code,
-        name: item.assessment.subCpmk.cpmk.name,
+        id: cpmk?.id ?? '',
+        code: cpmk?.code ?? '',
+        name: cpmk?.name ?? '',
       },
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,

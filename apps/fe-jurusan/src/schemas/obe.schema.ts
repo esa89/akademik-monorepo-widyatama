@@ -3,13 +3,12 @@ import { z } from 'zod';
 // ─── CPL Schema ────────────────────────────────────
 export const cplSchema = z.object({
   code: z.string().min(1, 'Kode CPL wajib diisi').max(20, 'Kode maksimal 20 karakter'),
-  name: z.string().min(1, 'Nama CPL wajib diisi').max(200, 'Nama maksimal 200 karakter'),
+  name: z.string().min(1, 'Nama CPL wajib diisi').max(500, 'Nama maksimal 500 karakter'),
   category: z.enum(['SIKAP', 'PENGETAHUAN', 'KETERAMPILAN_UMUM', 'KETERAMPILAN_KHUSUS'], {
     required_error: 'Kategori wajib dipilih',
   }),
   description: z.string().max(500, 'Deskripsi maksimal 500 karakter').optional().or(z.literal('')),
   curriculumYear: z.coerce.number().min(2000, 'Tahun kurikulum minimal 2000').max(2100, 'Tahun kurikulum maksimal 2100'),
-  isActive: z.boolean().default(true),
 });
 
 export type CplFormData = z.infer<typeof cplSchema>;
@@ -82,3 +81,14 @@ export const rubricSchema = z.object({
 });
 
 export type RubricFormData = z.infer<typeof rubricSchema>;
+
+// ─── Body of Knowledge Schema ──────────────────────────────────────
+export const bodyOfKnowledgeSchema = z.object({
+  code: z.string().min(1, 'Kode BK wajib diisi').max(20, 'Kode maksimal 20 karakter'),
+  name: z.string().min(1, 'Nama Bahan Kajian wajib diisi').max(255, 'Nama maksimal 255 karakter'),
+  reference: z.string().min(1, 'Acuan wajib diisi'),
+  description: z.string().optional().or(z.literal('')),
+  isActive: z.boolean().default(true),
+});
+
+export type BodyOfKnowledgeFormData = z.infer<typeof bodyOfKnowledgeSchema>;

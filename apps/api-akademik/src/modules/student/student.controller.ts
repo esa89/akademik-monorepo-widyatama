@@ -41,6 +41,14 @@ export class StudentController {
     return this.service.findOne(id);
   }
 
+  @Get(':id/transcript')
+  @ApiOperation({ summary: 'Get student transcript: list mata kuliah, nilai, dan IPK' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Transcript retrieved successfully' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Student not found' })
+  async getTranscript(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    return this.service.getTranscript(id);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Create a new student' })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Student created successfully' })

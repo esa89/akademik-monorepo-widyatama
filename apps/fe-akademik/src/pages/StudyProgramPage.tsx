@@ -138,14 +138,14 @@ export default function StudyProgramPage() {
       <DataTable<StudyProgram>
         headers={[
           { key: 'code', title: 'Kode', sortable: true, render: (item) => <CodeChip code={item.code} /> },
-          { key: 'id', title: 'UUID', render: (item) => <UuidChip id={item.id} /> },
+          { key: 'uuid', title: 'UUID', render: (item) => <UuidChip id={item.id} /> },
           { key: 'name', title: 'Nama', sortable: true },
           { key: 'faculty', title: 'Fakultas', render: (item) => item.faculty?.name || '-' },
           { key: 'degree', title: 'Jenjang', sortable: true },
           { key: 'accreditation', title: 'Akreditasi', sortable: true },
           { key: 'isActive', title: 'Status', render: (item) => <StatusBadge active={item.isActive} /> },
           {
-            key: 'id', title: 'Aksi',
+            key: 'actions', title: 'Aksi',
             render: (item) => (
               <div className="flex items-center gap-2">
                 <Switch checked={item.isActive} onCheckedChange={() => toggleStatus(item)} size="sm" />

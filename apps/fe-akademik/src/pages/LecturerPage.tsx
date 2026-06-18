@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DataTable, Input, Button, Drawer, Switch } from '@widyatama/ui';
 import type { DataTableOptions, Header } from '@widyatama/ui';
-import { PageHeader } from '@/components/common/PageHeader';
+import * as XLSX from 'xlsx';
 import { StatCard } from '@/components/common/StatCard';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
@@ -14,6 +14,7 @@ import type { Lecturer, AuthentikStatus } from '@/types';
 import {
   Users, Search, Plus, Pencil, Trash2, RefreshCw, KeyRound,
   GraduationCap, CheckCircle2, AlertCircle, XCircle, UserCheck,
+  FileSpreadsheet, AlertTriangle, Upload, ChevronRight, ChevronLeft, Loader2,
 } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -35,6 +36,16 @@ const ACADEMIC_POSITION_OPTIONS = [
 
 const SELECT_CLS = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white';
 const LABEL_CLS = 'block text-sm font-medium text-gray-700 mb-1.5';
+
+interface LecturerImportRow {
+  nidn: string;
+  nrk: string;
+  name: string;
+  valid: boolean;
+  error?: string;
+}
+
+type ImportStep = 1 | 2;
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -97,6 +108,16 @@ export default function LecturerPage() {
   const [confirmSyncOpen, setConfirmSyncOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // ─── State: Import via Excel ──────────────────────────────────────────────
+  const [importOpen, setImportOpen] = useState(false);
+  const [importStep, setImportStep] = useState<ImportStep>(1);
+  const [importFacultyId, setImportFacultyId] = useState('');
+  const [importProdiId, setImportProdiId] = useState('');
+  const [importRows, setImportRows] = useState<LecturerImportRow[]>([]);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
+  const [importResult, setImportResult] = useState<{ success: number; failed: string[] } | null>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
+
   // ─── Queries ───────────────────────────────────────────────────────────────
 
   const { data, isLoading } = useQuery({
@@ -150,6 +171,28 @@ export default function LecturerPage() {
     queryFn: () => lecturerService.getById(detailId!),
     enabled: !!detailId && detailOpen,
   });
+
+  const { data: importStudyPrograms } = useQuery({
+    queryKey: ['study-programs', 'import-lecturer', importFacultyId],
+    queryFn: () => studyProgramService.getAll({ page: 1, limit: 100, facultyId: importFacultyId }),
+    enabled: importOpen && !!importFacultyId,
+  });
+
+  // Auto-select "Teknik" faculty when import drawer opens
+  useEffect(() => {
+    if (importOpen && faculties?.data && !importFacultyId) {
+      const teknik = faculties.data.find((f) => f.name.toLowerCase().includes('teknik'));
+      if (teknik) setImportFacultyId(teknik.id);
+    }
+  }, [importOpen, faculties?.data]);
+
+  // Auto-select "Teknik Informatika" prodi
+  useEffect(() => {
+    if (importOpen && importStudyPrograms?.data && !importProdiId) {
+      const ti = importStudyPrograms.data.find((sp) => sp.name.toLowerCase().includes('informatika'));
+      if (ti) setImportProdiId(ti.id);
+    }
+  }, [importOpen, importStudyPrograms?.data]);
 
   // ─── Mutations ────────────────────────────────────────────────────────────
 
@@ -391,6 +434,83 @@ export default function LecturerPage() {
     resetPwdMutation.mutate({ id: resetPwdId!, pwd: resetPwd.newPassword });
   };
 
+  // ─── Import via Excel ─────────────────────────────────────────────────────
+
+  const resetImport = () => {
+    setImportStep(1);
+    setImportFacultyId('');
+    setImportProdiId('');
+    setImportRows([]);
+    setImportProgress(null);
+    setImportResult(null);
+    if (importFileRef.current) importFileRef.current.value = '';
+  };
+
+  const openImport = () => { resetImport(); setImportOpen(true); };
+
+  const handleImportXlsx = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const wb  = XLSX.read(new Uint8Array(evt.target?.result as ArrayBuffer), { type: 'array' });
+        const ws  = wb.Sheets[wb.SheetNames[0]];
+        const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+        const parsed: LecturerImportRow[] = rows
+          .map((row) => ({
+            nidn: String(row[0] ?? '').trim(),
+            nrk:  String(row[1] ?? '').trim(),
+            name: String(row[2] ?? '').trim(),
+          }))
+          .filter((r) => r.nidn && r.nidn.toLowerCase() !== 'nidn')
+          .map((r) => {
+            const valid = r.nidn.length >= 3 && r.nrk.length >= 2 && r.name.length >= 2;
+            return { ...r, valid, error: !valid ? 'NIDN, NRK, atau Nama tidak valid' : undefined };
+          });
+
+        setImportRows(parsed);
+      } catch {
+        showToast('error', 'Gagal membaca file XLSX.');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    if (importFileRef.current) importFileRef.current.value = '';
+  };
+
+  const runImport = async () => {
+    const validRows = importRows.filter((r) => r.valid);
+    setImportProgress({ done: 0, total: validRows.length });
+    setImportResult(null);
+
+    const failed: string[] = [];
+    for (let i = 0; i < validRows.length; i++) {
+      const row = validRows[i];
+      try {
+        await lecturerService.create({
+          nidn:           row.nidn,
+          nrk:            row.nrk,
+          name:           row.name,
+          email:          `${row.nidn}@widyatama.ac.id`,
+          lastEducation:  'S2',
+          academicPosition: 'TENAGA_PENGAJAR',
+          facultyId:      importFacultyId,
+          studyProgramId: importProdiId,
+          isActive:       true,
+          username:       row.nidn,
+          password:       `${row.nidn}@Wt`,
+        });
+      } catch {
+        failed.push(row.nidn);
+      }
+      setImportProgress({ done: i + 1, total: validRows.length });
+    }
+
+    setImportResult({ success: validRows.length - failed.length, failed });
+    queryClient.invalidateQueries({ queryKey: ['lecturers'] });
+  };
+
   // ─── Table Headers ────────────────────────────────────────────────────────
 
   const headers: Header<Lecturer>[] = [
@@ -503,11 +623,33 @@ export default function LecturerPage() {
         </div>
       )}
 
-      <PageHeader
-        title="Master Dosen"
-        description="Kelola data dosen dan akun Authentik SSO"
-        action={{ label: 'Tambah Dosen', onClick: openCreate, icon: <Plus size={16} /> }}
-      />
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Master Dosen</h1>
+          <p className="text-sm text-gray-500 mt-1">Kelola data dosen dan akun Authentik SSO</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <button
+              onClick={openImport}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-dashed border-yellow-400 text-yellow-700 bg-yellow-50 hover:bg-yellow-100 text-sm font-medium transition-colors"
+            >
+              <FileSpreadsheet size={15} />
+              Tambah via Excel
+            </button>
+            <span className="absolute -top-2 -right-2 bg-yellow-400 text-yellow-900 text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+              SEMENTARA
+            </span>
+          </div>
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white hover:bg-primary/90 text-sm font-medium transition-colors"
+          >
+            <Plus size={15} />
+            Tambah Dosen
+          </button>
+        </div>
+      </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -882,6 +1024,245 @@ export default function LecturerPage() {
         ) : (
           <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Memuat...</div>
         )}
+      </Drawer>
+
+      {/* ─── Import via Excel Drawer ────────────────────────────────────── */}
+      <Drawer
+        open={importOpen}
+        onClose={() => { setImportOpen(false); resetImport(); }}
+        title="Tambah Dosen via Excel"
+        footer={
+          importResult ? (
+            <div className="flex justify-end gap-3">
+              <Button onClick={() => { setImportOpen(false); resetImport(); }}>Selesai</Button>
+            </div>
+          ) : importProgress ? null : importStep === 1 ? (
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => { setImportOpen(false); resetImport(); }}>Batal</Button>
+              <Button onClick={() => setImportStep(2)} disabled={!importFacultyId || !importProdiId}>
+                Lanjut <ChevronRight size={14} className="ml-1" />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex justify-between gap-3">
+              <Button variant="outline" onClick={() => { setImportRows([]); setImportStep(1); }}>
+                <ChevronLeft size={14} className="mr-1" /> Kembali
+              </Button>
+              <Button onClick={runImport} disabled={importRows.filter((r) => r.valid).length === 0}>
+                <Upload size={14} className="mr-1" />
+                Import {importRows.filter((r) => r.valid).length} Dosen
+              </Button>
+            </div>
+          )
+        }
+      >
+        <div className="space-y-4 p-1">
+
+          {/* Peringatan fitur sementara */}
+          <div className="flex items-start gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
+            <AlertTriangle size={15} className="text-yellow-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-xs font-semibold text-yellow-800">Fitur Sementara</p>
+              <p className="text-xs text-yellow-700 mt-0.5">
+                Email, username, dan password dibuat otomatis dari NIDN. Pendidikan terakhir default S2. Semua data dapat diperbarui setelah import.
+              </p>
+            </div>
+          </div>
+
+          {/* STEP 1 — Pilih Fakultas & Prodi */}
+          {importStep === 1 && !importResult && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <span className="w-5 h-5 rounded-full bg-primary text-white flex items-center justify-center text-[10px]">1</span>
+                Pilih Tujuan
+              </div>
+
+              <div>
+                <label className={LABEL_CLS}>Fakultas <span className="text-red-500">*</span></label>
+                <select
+                  value={importFacultyId}
+                  onChange={(e) => { setImportFacultyId(e.target.value); setImportProdiId(''); }}
+                  className={SELECT_CLS}
+                >
+                  <option value="">Pilih fakultas</option>
+                  {faculties?.data?.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className={LABEL_CLS}>Program Studi <span className="text-red-500">*</span></label>
+                <select
+                  value={importProdiId}
+                  onChange={(e) => setImportProdiId(e.target.value)}
+                  disabled={!importFacultyId}
+                  className={`${SELECT_CLS} disabled:opacity-50`}
+                >
+                  <option value="">Pilih program studi</option>
+                  {importStudyPrograms?.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+
+              <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <p className="text-xs font-semibold text-gray-600 mb-1.5">Format file Excel:</p>
+                <div className="overflow-auto">
+                  <table className="text-[11px] w-full border-collapse">
+                    <thead>
+                      <tr className="bg-gray-200">
+                        <th className="px-2 py-1 text-left border border-gray-300 font-semibold">Kolom A</th>
+                        <th className="px-2 py-1 text-left border border-gray-300 font-semibold">Kolom B</th>
+                        <th className="px-2 py-1 text-left border border-gray-300 font-semibold">Kolom C</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="bg-white">
+                        <td className="px-2 py-1 border border-gray-200 text-gray-500 italic">NIDN (header, opsional)</td>
+                        <td className="px-2 py-1 border border-gray-200 text-gray-500 italic">NRK (header, opsional)</td>
+                        <td className="px-2 py-1 border border-gray-200 text-gray-500 italic">Nama (header, opsional)</td>
+                      </tr>
+                      <tr className="bg-white">
+                        <td className="px-2 py-1 border border-gray-200">0412345678</td>
+                        <td className="px-2 py-1 border border-gray-200">WT00001</td>
+                        <td className="px-2 py-1 border border-gray-200">Budi Santoso</td>
+                      </tr>
+                      <tr className="bg-white">
+                        <td className="px-2 py-1 border border-gray-200">0498765432</td>
+                        <td className="px-2 py-1 border border-gray-200">WT00002</td>
+                        <td className="px-2 py-1 border border-gray-200">Siti Rahayu</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div className="text-[11px] text-gray-400 mt-1.5 space-y-0.5">
+                  <p>• Email: <span className="font-mono">NIDN@widyatama.ac.id</span></p>
+                  <p>• Username: NIDN &nbsp;|&nbsp; Password: <span className="font-mono">NIDN@Wt</span></p>
+                  <p>• Pendidikan terakhir: S2 &nbsp;|&nbsp; Jabatan: Tenaga Pengajar</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 2 — Upload & Preview */}
+          {importStep === 2 && !importProgress && !importResult && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <span className="w-5 h-5 rounded-full bg-primary text-white flex items-center justify-center text-[10px]">2</span>
+                Upload File &amp; Preview
+              </div>
+
+              {/* Info batch */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full font-medium">
+                  {faculties?.data?.find((f) => f.id === importFacultyId)?.name}
+                </span>
+                <span className="text-xs bg-purple-50 text-purple-700 border border-purple-100 px-2 py-0.5 rounded-full font-medium">
+                  {importStudyPrograms?.data?.find((p) => p.id === importProdiId)?.name}
+                </span>
+              </div>
+
+              {/* Upload button */}
+              <input ref={importFileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportXlsx} />
+              <button
+                type="button"
+                onClick={() => importFileRef.current?.click()}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl text-sm font-medium text-gray-500 hover:border-primary hover:text-primary transition-colors"
+              >
+                <FileSpreadsheet size={16} />
+                {importRows.length > 0 ? 'Ganti File Excel' : 'Pilih File Excel (.xlsx / .xls)'}
+              </button>
+
+              {/* Preview table */}
+              {importRows.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-gray-600">
+                      Preview: {importRows.filter((r) => r.valid).length} valid,{' '}
+                      <span className="text-red-500">{importRows.filter((r) => !r.valid).length} error</span>
+                    </p>
+                    <p className="text-[11px] text-gray-400">{importRows.length} baris ditemukan</p>
+                  </div>
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="overflow-y-auto max-h-64">
+                      <table className="w-full text-xs">
+                        <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600 w-28">NIDN</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600 w-24">NRK</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600">Nama</th>
+                            <th className="px-3 py-2 text-center font-semibold text-gray-600 w-12">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importRows.map((row, i) => (
+                            <tr key={i} className={`border-b border-gray-50 ${!row.valid ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
+                              <td className="px-3 py-1.5 font-mono text-gray-700">{row.nidn}</td>
+                              <td className="px-3 py-1.5 font-mono text-gray-500">{row.nrk}</td>
+                              <td className="px-3 py-1.5 text-gray-800 max-w-[140px] truncate">{row.name}</td>
+                              <td className="px-3 py-1.5 text-center">
+                                {row.valid
+                                  ? <CheckCircle2 size={12} className="text-emerald-500 inline" />
+                                  : <XCircle size={12} className="text-red-500 inline" title={row.error} />}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* PROGRESS */}
+          {importProgress && !importResult && (
+            <div className="flex flex-col items-center gap-4 py-8">
+              <Loader2 size={32} className="text-primary animate-spin" />
+              <div className="w-full">
+                <div className="flex justify-between text-xs text-gray-500 mb-1.5">
+                  <span>Mengimport dosen...</span>
+                  <span>{importProgress.done} / {importProgress.total}</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2">
+                  <div
+                    className="bg-primary h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(importProgress.done / importProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* RESULT */}
+          {importResult && (
+            <div className="space-y-3">
+              <div className={`flex items-start gap-3 p-4 rounded-xl border ${
+                importResult.failed.length === 0
+                  ? 'bg-emerald-50 border-emerald-200'
+                  : 'bg-yellow-50 border-yellow-200'
+              }`}>
+                <CheckCircle2 size={18} className={importResult.failed.length === 0 ? 'text-emerald-600' : 'text-yellow-600'} />
+                <div>
+                  <p className={`text-sm font-semibold ${importResult.failed.length === 0 ? 'text-emerald-800' : 'text-yellow-800'}`}>
+                    Import selesai
+                  </p>
+                  <p className="text-xs mt-0.5 text-gray-600">
+                    {importResult.success} dosen berhasil ditambahkan.
+                    {importResult.failed.length > 0 && ` ${importResult.failed.length} gagal (NIDN mungkin sudah terdaftar).`}
+                  </p>
+                  {importResult.failed.length > 0 && (
+                    <p className="text-xs mt-1 text-red-600 font-mono">
+                      Gagal: {importResult.failed.slice(0, 5).join(', ')}
+                      {importResult.failed.length > 5 && ` +${importResult.failed.length - 5} lainnya`}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 text-center">
+                Email, pendidikan, dan jabatan dapat diperbarui di detail masing-masing dosen.
+              </p>
+            </div>
+          )}
+        </div>
       </Drawer>
 
       {/* ─── Reset Password Dialog ────────────────────────────────────────── */}

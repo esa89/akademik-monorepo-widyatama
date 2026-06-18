@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -21,8 +21,34 @@ import type { AcademicClass } from '@/types';
 import {
   School, Search, Plus, Pencil, Trash2,
   CheckCircle2, XCircle, Users, BookOpen,
-  GraduationCap, Upload, FileSpreadsheet,
+  GraduationCap, Upload, FileSpreadsheet, Loader2,
 } from 'lucide-react';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface XlsxStudentRow {
+  nim: string;
+  studentId: string | null;
+  name: string | null;
+  kehadiran: number | null;
+  uts: number | null;
+  uas: number | null;
+  quiz: number | null;
+  tugas: number | null;
+  grade: string | null;
+  nilaiAkhir: number | null;
+}
+
+function gradeBadgeClass(grade: string | null | undefined) {
+  const map: Record<string, string> = {
+    A: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    B: 'bg-blue-50 text-blue-700 border-blue-200',
+    C: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+    D: 'bg-orange-50 text-orange-700 border-orange-200',
+    E: 'bg-red-50 text-red-700 border-red-200',
+  };
+  return grade ? (map[grade] ?? 'bg-gray-100 text-gray-600') : 'bg-gray-100 text-gray-400';
+}
 
 // ─── Zod Schema ───────────────────────────────────────────────────────────────
 
@@ -75,7 +101,8 @@ export default function AcademicClassPage() {
   const [drawerOpen, setDrawerOpen]   = useState(false);
   const [editingId, setEditingId]     = useState<string | null>(null);
   const [studentSearch, setStudentSearch] = useState('');
-  const [xlsxMsg, setXlsxMsg]         = useState<{ found: number; missing: string[] } | null>(null);
+  const [xlsxRows, setXlsxRows]       = useState<XlsxStudentRow[]>([]);
+  const [isSaving, setIsSaving]       = useState(false);
 
   const [detailOpen, setDetailOpen]         = useState(false);
   const [detailId, setDetailId]             = useState<string | null>(null);
@@ -177,32 +204,22 @@ export default function AcademicClassPage() {
     enabled:  !!detailId && detailOpen,
   });
 
+  // Query detail saat mode edit — untuk mengisi studentIds yang tidak ada di list endpoint
+  const { data: editDetailData, isLoading: editDetailLoading } = useQuery({
+    queryKey: ['academic-classes', 'edit-detail', editingId],
+    queryFn:  () => academicClassService.getById(editingId!),
+    enabled:  !!editingId && drawerOpen,
+  });
+
+  // Isi studentIds dari detail saat data tiba
+  useEffect(() => {
+    if (editDetailData?.data && editingId) {
+      const students = (editDetailData.data as AcademicClass).students ?? [];
+      setValue('studentIds', students.map((s) => s.studentId));
+    }
+  }, [editDetailData, editingId]);
+
   // ─── Mutations ────────────────────────────────────────────────────────────
-
-  const createMutation = useMutation({
-    mutationFn: academicClassService.create,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['academic-classes'] });
-      setDrawerOpen(false); resetForm();
-      showToast('success', 'Kelas perkuliahan berhasil dibuat.');
-    },
-    onError: (err: any) => {
-      showToast('error', err.response?.data?.message || 'Gagal membuat kelas perkuliahan');
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof academicClassService.update>[1] }) =>
-      academicClassService.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['academic-classes'] });
-      setDrawerOpen(false); resetForm();
-      showToast('success', 'Kelas perkuliahan berhasil diperbarui.');
-    },
-    onError: (err: any) => {
-      showToast('error', err.response?.data?.message || 'Gagal memperbarui kelas perkuliahan');
-    },
-  });
 
   const deleteMutation = useMutation({
     mutationFn: academicClassService.remove,
@@ -231,7 +248,7 @@ export default function AcademicClassPage() {
     });
     setEditingId(null);
     setStudentSearch('');
-    setXlsxMsg(null);
+    setXlsxRows([]);
     setDisplayValues({ semesterId: '', courseId: '', primaryLecturerId: '', assistantLecturerId: '' });
   };
 
@@ -259,31 +276,70 @@ export default function AcademicClassPage() {
       assistantLecturerId: formatLecturerName(assistantLecturer?.lecturer),
     });
     setStudentSearch('');
-    setXlsxMsg(null);
+    setXlsxRows([]);
     setDrawerOpen(true);
   };
 
-  const onSubmit = (formData: ClassFormData) => {
-    const lecturerList: { lecturerId: string; role: string }[] = [
-      { lecturerId: formData.primaryLecturerId, role: 'PRIMARY' },
-    ];
-    if (formData.assistantLecturerId) {
-      lecturerList.push({ lecturerId: formData.assistantLecturerId, role: 'ASSISTANT' });
+  const onSubmit = async (formData: ClassFormData) => {
+    setIsSaving(true);
+    try {
+      const lecturerList: { lecturerId: string; role: string }[] = [
+        { lecturerId: formData.primaryLecturerId, role: 'PRIMARY' },
+      ];
+      if (formData.assistantLecturerId) {
+        lecturerList.push({ lecturerId: formData.assistantLecturerId, role: 'ASSISTANT' });
+      }
+      const payload = {
+        semesterId: formData.semesterId,
+        courseId:   formData.courseId,
+        code:       formData.name.trim(),
+        name:       formData.name.trim(),
+        capacity:   formData.capacity,
+        isActive:   formData.isActive,
+        lecturers:  lecturerList,
+        studentIds: formData.studentIds ?? [],
+      };
+
+      let classId: string;
+      if (editingId) {
+        await academicClassService.update(editingId, payload);
+        classId = editingId;
+      } else {
+        const res = await academicClassService.create(payload);
+        classId = res.data.id;
+      }
+
+      // Simpan nilai jika ada data grade dari XLSX
+      const gradesPayload = xlsxRows
+        .filter((r) => r.nim && (r.kehadiran !== null || r.uts !== null || r.uas !== null ||
+                                   r.quiz !== null || r.tugas !== null || r.grade !== null))
+        .map((r) => ({
+          nim:        r.nim,
+          ...(r.kehadiran  !== null && { kehadiran:  r.kehadiran }),
+          ...(r.uts        !== null && { uts:        r.uts }),
+          ...(r.uas        !== null && { uas:        r.uas }),
+          ...(r.quiz       !== null && { quiz:       r.quiz }),
+          ...(r.tugas      !== null && { tugas:      r.tugas }),
+          ...(r.grade      !== null && { grade:      r.grade }),
+          ...(r.nilaiAkhir !== null && { nilaiAkhir: r.nilaiAkhir }),
+        }));
+
+      if (gradesPayload.length > 0) {
+        const chunkSize = 50;
+        for (let i = 0; i < gradesPayload.length; i += chunkSize) {
+          await academicClassService.importGrades(classId, gradesPayload.slice(i, i + chunkSize));
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['academic-classes'] });
+      setDrawerOpen(false);
+      resetForm();
+      showToast('success', editingId ? 'Kelas perkuliahan berhasil diperbarui.' : 'Kelas perkuliahan berhasil dibuat.');
+    } catch (err: any) {
+      showToast('error', err.response?.data?.message || 'Gagal menyimpan kelas perkuliahan');
+    } finally {
+      setIsSaving(false);
     }
-
-    const payload = {
-      semesterId: formData.semesterId,
-      courseId:   formData.courseId,
-      code:       formData.name.trim(),   // code = name (A/B/C)
-      name:       formData.name.trim(),
-      capacity:   formData.capacity,
-      isActive:   formData.isActive,
-      lecturers:  lecturerList,
-      studentIds: formData.studentIds ?? [],
-    };
-
-    if (editingId) updateMutation.mutate({ id: editingId, data: payload });
-    else createMutation.mutate(payload);
   };
 
   const toggleStudent = (studentId: string) => {
@@ -295,7 +351,17 @@ export default function AcademicClassPage() {
     }
   };
 
-  // ─── XLSX Upload ─────────────────────────────────────────────────────────
+  // ─── XLSX Upload (NIM + Nilai) ────────────────────────────────────────────
+
+  const toFloat = (v: any): number | null => {
+    const n = parseFloat(String(v ?? '').trim());
+    return isNaN(n) ? null : Math.min(100, Math.max(0, n));
+  };
+
+  const toGrade = (v: any): string | null => {
+    const s = String(v ?? '').trim().toUpperCase();
+    return /^[A-E]$/.test(s) ? s : null;
+  };
 
   const handleXlsxUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -304,40 +370,43 @@ export default function AcademicClassPage() {
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const data = new Uint8Array(evt.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheet    = workbook.Sheets[workbook.SheetNames[0]];
-        const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+        const wb   = XLSX.read(new Uint8Array(evt.target?.result as ArrayBuffer), { type: 'array' });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
-        // Ambil semua nilai dari kolom pertama, lewati header jika ada string
-        const rawNims: string[] = rows
-          .flatMap((row) => [String(row[0] ?? '').trim()])
-          .filter((v) => v && v.toLowerCase() !== 'nim');
-
-        const studentMap = new Map<string, string>(
-          (allStudents?.data ?? []).map((s) => [s.nim.trim(), s.id]),
+        const studentMap = new Map(
+          (allStudents?.data ?? []).map((s) => [s.nim.trim(), s]),
         );
 
-        const found: string[]   = [];
-        const missing: string[] = [];
+        const parsed: XlsxStudentRow[] = rows
+          .map((row) => ({
+            nim:        String(row[0] ?? '').trim(),
+            studentId:  null as string | null,
+            name:       null as string | null,
+            kehadiran:  toFloat(row[1]),
+            uts:        toFloat(row[2]),
+            uas:        toFloat(row[3]),
+            quiz:       toFloat(row[4]),
+            tugas:      toFloat(row[5]),
+            grade:      toGrade(row[6]),
+            nilaiAkhir: toFloat(row[7]),
+          }))
+          .filter((r) => r.nim && r.nim.toLowerCase() !== 'nim' && r.nim.toLowerCase() !== 'npm')
+          .map((r) => {
+            const student = studentMap.get(r.nim);
+            return { ...r, studentId: student?.id ?? null, name: student?.name ?? null };
+          });
 
-        rawNims.forEach((nim) => {
-          const id = studentMap.get(nim);
-          if (id) found.push(id);
-          else missing.push(nim);
-        });
+        setXlsxRows(parsed);
 
-        // Gabungkan dengan yang sudah dipilih sebelumnya
-        const merged = [...new Set([...watchedStudentIds, ...found])];
+        const found    = parsed.filter((r) => r.studentId).map((r) => r.studentId as string);
+        const merged   = [...new Set([...watchedStudentIds, ...found])];
         setValue('studentIds', merged, { shouldValidate: true });
-        setXlsxMsg({ found: found.length, missing });
       } catch {
         showToast('error', 'Gagal membaca file XLSX. Pastikan format file benar.');
       }
     };
     reader.readAsArrayBuffer(file);
-
-    // Reset input agar file yang sama bisa di-upload ulang
     if (xlsxInputRef.current) xlsxInputRef.current.value = '';
   };
 
@@ -351,6 +420,7 @@ export default function AcademicClassPage() {
     const q = studentSearch.toLowerCase();
     return s.nim.toLowerCase().includes(q) || s.name.toLowerCase().includes(q);
   });
+
 
   // ─── Table Headers ─────────────────────────────────────────────────────────
 
@@ -415,7 +485,7 @@ export default function AcademicClassPage() {
       render: (row) => (
         <div className="flex items-center gap-1">
           <button onClick={(e) => { e.stopPropagation(); openEdit(row); }}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Edit">
+            className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Edit Kelas">
             <Pencil size={14} />
           </button>
           <button onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); setConfirmDeleteOpen(true); }}
@@ -506,8 +576,10 @@ export default function AcademicClassPage() {
         footer={
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={() => { setDrawerOpen(false); resetForm(); }}>Batal</Button>
-            <Button onClick={handleSubmit(onSubmit)} disabled={createMutation.isPending || updateMutation.isPending}>
-              {createMutation.isPending || updateMutation.isPending ? 'Menyimpan...' : editingId ? 'Simpan Perubahan' : 'Buat Kelas'}
+            <Button onClick={handleSubmit(onSubmit)} disabled={isSaving}>
+              {isSaving ? (
+                <><Loader2 size={14} className="mr-1 animate-spin" />Menyimpan...</>
+              ) : editingId ? 'Simpan Perubahan' : 'Buat Kelas'}
             </Button>
           </div>
         }
@@ -625,13 +697,17 @@ export default function AcademicClassPage() {
 
             {/* Counter + Clear */}
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-xs text-gray-500">
-                Dipilih: <span className={`font-semibold ${watchedStudentIds.length > watchedCapacity ? 'text-red-600' : 'text-gray-800'}`}>
-                  {watchedStudentIds.length}
-                </span> / {watchedCapacity} mahasiswa
+              <span className="text-xs text-gray-500 flex items-center gap-1.5">
+                {editDetailLoading && editingId ? (
+                  <><Loader2 size={12} className="animate-spin text-primary" />Memuat daftar mahasiswa...</>
+                ) : (
+                  <>Dipilih: <span className={`font-semibold ${watchedStudentIds.length > watchedCapacity ? 'text-red-600' : 'text-gray-800'}`}>
+                    {watchedStudentIds.length}
+                  </span> / {watchedCapacity} mahasiswa</>
+                )}
               </span>
               {watchedStudentIds.length > 0 && (
-                <button type="button" onClick={() => { setValue('studentIds', []); setXlsxMsg(null); }}
+                <button type="button" onClick={() => { setValue('studentIds', []); setXlsxRows([]); }}
                   className="text-xs text-red-500 hover:underline">
                   Hapus semua
                 </button>
@@ -639,33 +715,91 @@ export default function AcademicClassPage() {
             </div>
 
             {/* Upload XLSX */}
-            <div className="mb-3">
+            <div className="mb-3 space-y-2">
               <input ref={xlsxInputRef} type="file" accept=".xlsx,.xls" className="hidden"
                 onChange={handleXlsxUpload} />
               <button type="button" onClick={() => xlsxInputRef.current?.click()}
                 className="w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:border-primary hover:text-primary transition-colors">
                 <FileSpreadsheet size={14} />
-                Upload NIM dari file XLSX
+                {xlsxRows.length > 0 ? 'Ganti File XLSX' : 'Upload NIM + Nilai dari XLSX'}
               </button>
-              <p className="text-[11px] text-gray-400 mt-1 text-center">
-                Format: satu kolom NIM (baris pertama bisa header "NIM" atau langsung data)
-              </p>
 
-              {/* Hasil upload */}
-              {xlsxMsg && (
-                <div className={`mt-2 px-3 py-2 rounded-lg text-xs flex items-start gap-2
-                  ${xlsxMsg.missing.length === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-yellow-50 text-yellow-700'}`}>
-                  <Upload size={12} className="mt-0.5 shrink-0" />
-                  <div>
-                    <p className="font-medium">{xlsxMsg.found} mahasiswa berhasil ditambahkan</p>
-                    {xlsxMsg.missing.length > 0 && (
-                      <p className="mt-0.5">NIM tidak ditemukan: {xlsxMsg.missing.slice(0, 5).join(', ')}
-                        {xlsxMsg.missing.length > 5 && ` +${xlsxMsg.missing.length - 5} lainnya`}
-                      </p>
-                    )}
+              {/* Format hint */}
+              <div className="px-3 py-2 bg-gray-50 rounded-lg border border-gray-100 text-[11px] text-gray-500 space-y-0.5">
+                <p className="font-semibold text-gray-600 mb-1">Format kolom Excel:</p>
+                <p><span className="font-medium text-gray-700">A:</span> NIM/NPM &nbsp;
+                   <span className="font-medium text-gray-700">B:</span> Kehadiran &nbsp;
+                   <span className="font-medium text-gray-700">C:</span> UTS &nbsp;
+                   <span className="font-medium text-gray-700">D:</span> UAS &nbsp;
+                   <span className="font-medium text-gray-700">E:</span> Quiz &nbsp;
+                   <span className="font-medium text-gray-700">F:</span> Tugas &nbsp;
+                   <span className="font-medium text-gray-700">G:</span> Grade (A–E) &nbsp;
+                   <span className="font-medium text-gray-700">H:</span> Nilai Akhir</p>
+                <p className="text-gray-400">• Kolom B–H opsional — bisa hanya isi NIM saja untuk enroll</p>
+                <p className="text-gray-400">• Grade (kolom G) ditentukan dosen: A, B, C, D, atau E</p>
+              </div>
+
+              {/* Preview tabel setelah upload */}
+              {xlsxRows.length > 0 && (() => {
+                const found   = xlsxRows.filter((r) => r.studentId);
+                const missing = xlsxRows.filter((r) => !r.studentId);
+                const hasGrades = xlsxRows.some((r) =>
+                  r.kehadiran !== null || r.uts !== null || r.uas !== null ||
+                  r.quiz !== null || r.tugas !== null || r.grade !== null);
+                return (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span>
+                        <span className="text-emerald-600 font-semibold">{found.length} ditemukan</span>
+                        {missing.length > 0 && <span className="text-red-500 ml-1.5">{missing.length} tidak ditemukan</span>}
+                        {hasGrades && <span className="text-blue-600 ml-1.5">· ada data nilai</span>}
+                      </span>
+                      <button type="button" onClick={() => { setXlsxRows([]); setValue('studentIds', watchedStudentIds.filter(id => !found.map(r => r.studentId).includes(id))); }}
+                        className="text-red-400 hover:text-red-600 hover:underline">hapus</button>
+                    </div>
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="overflow-y-auto overflow-x-auto max-h-48">
+                        <table className="w-full text-[11px] min-w-[480px]">
+                          <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
+                            <tr>
+                              <th className="px-2 py-1.5 text-left font-semibold text-gray-500">NIM</th>
+                              <th className="px-2 py-1.5 text-left font-semibold text-gray-500">Nama</th>
+                              <th className="px-2 py-1.5 text-center font-semibold text-gray-500">Hadir</th>
+                              <th className="px-2 py-1.5 text-center font-semibold text-gray-500">UTS</th>
+                              <th className="px-2 py-1.5 text-center font-semibold text-gray-500">UAS</th>
+                              <th className="px-2 py-1.5 text-center font-semibold text-gray-500">Quiz</th>
+                              <th className="px-2 py-1.5 text-center font-semibold text-gray-500">Tugas</th>
+                              <th className="px-2 py-1.5 text-center font-semibold text-gray-500">Grade</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {xlsxRows.map((row, i) => (
+                              <tr key={i} className={`border-b border-gray-50 ${!row.studentId ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
+                                <td className="px-2 py-1.5 font-mono text-gray-600">{row.nim}</td>
+                                <td className="px-2 py-1.5 text-gray-700 max-w-[100px] truncate">
+                                  {row.name ?? <span className="text-red-400 italic">Tidak ditemukan</span>}
+                                </td>
+                                <td className="px-2 py-1.5 text-center text-gray-600">{row.kehadiran ?? '—'}</td>
+                                <td className="px-2 py-1.5 text-center text-gray-600">{row.uts ?? '—'}</td>
+                                <td className="px-2 py-1.5 text-center text-gray-600">{row.uas ?? '—'}</td>
+                                <td className="px-2 py-1.5 text-center text-gray-600">{row.quiz ?? '—'}</td>
+                                <td className="px-2 py-1.5 text-center text-gray-600">{row.tugas ?? '—'}</td>
+                                <td className="px-2 py-1.5 text-center">
+                                  {row.grade ? (
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${gradeBadgeClass(row.grade)}`}>
+                                      {row.grade}
+                                    </span>
+                                  ) : '—'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             {/* Search mahasiswa */}
@@ -756,14 +890,40 @@ export default function AcademicClassPage() {
               </div>
               {cls.students && cls.students.length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold text-gray-500 mb-2">Mahasiswa ({cls.students.length})</p>
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {cls.students.map((s) => (
-                      <div key={s.id} className="flex items-center gap-2 py-1 border-b border-gray-50">
-                        <span className="font-mono text-[11px] text-gray-500 w-20 shrink-0">{s.student?.nim}</span>
-                        <span className="text-xs text-gray-700">{s.student?.name}</span>
-                      </div>
-                    ))}
+                  <p className="text-xs font-semibold text-gray-500 mb-2">Mahasiswa &amp; Nilai ({cls.students.length})</p>
+                  <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                    <table className="w-full text-[11px] min-w-[400px]">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="px-2 py-1.5 text-left font-semibold text-gray-500">NIM</th>
+                          <th className="px-2 py-1.5 text-left font-semibold text-gray-500">Nama</th>
+                          <th className="px-2 py-1.5 text-center font-semibold text-gray-500">Hadir</th>
+                          <th className="px-2 py-1.5 text-center font-semibold text-gray-500">UTS</th>
+                          <th className="px-2 py-1.5 text-center font-semibold text-gray-500">UAS</th>
+                          <th className="px-2 py-1.5 text-center font-semibold text-gray-500">NA</th>
+                          <th className="px-2 py-1.5 text-center font-semibold text-gray-500">Grade</th>
+                        </tr>
+                      </thead>
+                      <tbody className="max-h-48 overflow-y-auto">
+                        {cls.students.map((s) => (
+                          <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50">
+                            <td className="px-2 py-1.5 font-mono text-gray-500">{s.student?.nim ?? '—'}</td>
+                            <td className="px-2 py-1.5 text-gray-700 max-w-[100px] truncate">{s.student?.name ?? '—'}</td>
+                            <td className="px-2 py-1.5 text-center text-gray-600">{s.kehadiran ?? '—'}</td>
+                            <td className="px-2 py-1.5 text-center text-gray-600">{s.uts ?? '—'}</td>
+                            <td className="px-2 py-1.5 text-center text-gray-600">{s.uas ?? '—'}</td>
+                            <td className="px-2 py-1.5 text-center font-semibold text-gray-800">{s.nilaiAkhir?.toFixed(1) ?? '—'}</td>
+                            <td className="px-2 py-1.5 text-center">
+                              {s.grade ? (
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${gradeBadgeClass(s.grade)}`}>
+                                  {s.grade}
+                                </span>
+                              ) : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}

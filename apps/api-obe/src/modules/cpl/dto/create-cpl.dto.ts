@@ -12,7 +12,7 @@ export class CreateCplDto {
   @ApiProperty({ description: 'CPL name', example: 'Berpikir Kritis' })
   @IsString()
   @IsNotEmpty()
-  @MaxLength(200)
+  @MaxLength(500)
   name!: string;
 
   @ApiProperty({

@@ -24,6 +24,13 @@ export interface AcademicClassStudentMapped {
   id: string;
   classId: string;
   studentId: string;
+  kehadiran: number | null;
+  uts: number | null;
+  uas: number | null;
+  quiz: number | null;
+  tugas: number | null;
+  nilaiAkhir: number | null;
+  grade: string | null;
   student: {
     id: string;
     nim: string;
@@ -89,7 +96,17 @@ const classDetailInclude = {
     orderBy: { role: 'asc' as const },
   },
   students: {
-    include: {
+    select: {
+      id: true,
+      classId: true,
+      studentId: true,
+      kehadiran: true,
+      uts: true,
+      uas: true,
+      quiz: true,
+      tugas: true,
+      nilaiAkhir: true,
+      grade: true,
       student: {
         select: {
           id: true,
@@ -210,14 +227,32 @@ export class AcademicClassRepository {
       };
     }
 
-    // Replace students if provided
+    // Sync students: remove those not in new list, add new ones (preserving grades for existing)
     if (data.studentIds !== undefined) {
-      updateData.students = {
-        deleteMany: {},
-        ...(data.studentIds.length > 0
-          ? { create: data.studentIds.map((sid) => ({ studentId: sid })) }
-          : {}),
-      };
+      if (data.studentIds.length === 0) {
+        updateData.students = { deleteMany: {} };
+      } else {
+        const existing = await this.prisma.classStudent.findMany({
+          where: { classId: id },
+          select: { studentId: true },
+        });
+        const existingIds = new Set(existing.map((s) => s.studentId));
+        const newIds = new Set(data.studentIds);
+
+        const toRemove = [...existingIds].filter((sid) => !newIds.has(sid));
+        const toAdd = [...newIds].filter((sid) => !existingIds.has(sid));
+
+        if (toRemove.length > 0) {
+          await this.prisma.classStudent.deleteMany({
+            where: { classId: id, studentId: { in: toRemove } },
+          });
+        }
+        if (toAdd.length > 0) {
+          await this.prisma.classStudent.createMany({
+            data: toAdd.map((sid) => ({ classId: id, studentId: sid })),
+          });
+        }
+      }
     }
 
     const item = await this.prisma.academicClass.update({
@@ -226,6 +261,80 @@ export class AcademicClassRepository {
       include: classDetailInclude,
     });
     return this.mapToDetailResponse(item);
+  }
+
+  async bulkUpsertGrades(
+    classId: string,
+    grades: Array<{
+      nim: string;
+      kehadiran?: number;
+      uts?: number;
+      uas?: number;
+      quiz?: number;
+      tugas?: number;
+      nilaiAkhir?: number;
+      grade?: string;
+    }>,
+  ): Promise<{ updated: number; notFound: string[] }> {
+    const students = await this.prisma.classStudent.findMany({
+      where: { classId },
+      include: { student: { select: { nim: true } } },
+    });
+
+    const nimToRecord = new Map(students.map((s) => [s.student?.nim ?? '', s]));
+    const notFound: string[] = [];
+    let updated = 0;
+
+    for (const g of grades) {
+      const record = nimToRecord.get(g.nim);
+      if (!record) { notFound.push(g.nim); continue; }
+
+      // Nilai akhir: gunakan yang diinput manual, atau hitung dari komponen jika ada komponen baru
+      const mergedKehadiran = g.kehadiran ?? record.kehadiran ?? undefined;
+      const mergedTugas     = g.tugas    ?? record.tugas    ?? undefined;
+      const mergedQuiz      = g.quiz     ?? record.quiz     ?? undefined;
+      const mergedUts       = g.uts      ?? record.uts      ?? undefined;
+      const mergedUas       = g.uas      ?? record.uas      ?? undefined;
+
+      const computedNA = this.computeNilaiAkhir(mergedKehadiran, mergedTugas, mergedQuiz, mergedUts, mergedUas);
+      const finalNA    = g.nilaiAkhir !== undefined ? g.nilaiAkhir : (computedNA ?? record.nilaiAkhir ?? null);
+
+      // Grade: selalu dari input dosen — tidak pernah dihitung otomatis
+      const finalGrade = g.grade !== undefined ? g.grade : record.grade;
+
+      await this.prisma.classStudent.update({
+        where: { id: record.id },
+        data: {
+          kehadiran:  g.kehadiran  !== undefined ? g.kehadiran  : record.kehadiran,
+          uts:        g.uts        !== undefined ? g.uts        : record.uts,
+          uas:        g.uas        !== undefined ? g.uas        : record.uas,
+          quiz:       g.quiz       !== undefined ? g.quiz       : record.quiz,
+          tugas:      g.tugas      !== undefined ? g.tugas      : record.tugas,
+          nilaiAkhir: finalNA,
+          grade:      finalGrade,
+        },
+      });
+      updated++;
+    }
+
+    return { updated, notFound };
+  }
+
+  computeNilaiAkhir(
+    kehadiran?: number,
+    tugas?: number,
+    quiz?: number,
+    uts?: number,
+    uas?: number,
+  ): number | null {
+    if ([kehadiran, tugas, quiz, uts, uas].every((v) => v === undefined)) return null;
+    return (
+      (kehadiran ?? 0) * 0.10 +
+      (tugas     ?? 0) * 0.20 +
+      (quiz      ?? 0) * 0.20 +
+      (uts       ?? 0) * 0.20 +
+      (uas       ?? 0) * 0.30
+    );
   }
 
   async remove(id: string) {
@@ -334,6 +443,13 @@ export class AcademicClassRepository {
       id: string;
       classId: string;
       studentId: string;
+      kehadiran: number | null;
+      uts: number | null;
+      uas: number | null;
+      quiz: number | null;
+      tugas: number | null;
+      nilaiAkhir: number | null;
+      grade: string | null;
       student: {
         id: string;
         nim: string;
@@ -366,6 +482,13 @@ export class AcademicClassRepository {
         id: s.id,
         classId: s.classId,
         studentId: s.studentId,
+        kehadiran: s.kehadiran,
+        uts: s.uts,
+        uas: s.uas,
+        quiz: s.quiz,
+        tugas: s.tugas,
+        nilaiAkhir: s.nilaiAkhir,
+        grade: s.grade,
         student: s.student,
       })),
       createdAt: item.createdAt,

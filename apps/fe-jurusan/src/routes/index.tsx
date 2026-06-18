@@ -4,9 +4,16 @@ import DashboardPage from '@/pages/DashboardPage';
 import CplPage from '@/pages/CplPage';
 import CpmkPage from '@/pages/CpmkPage';
 import SubCpmkPage from '@/pages/SubCpmkPage';
-import AssessmentPage from '@/pages/AssessmentPage';
-import RubricPage from '@/pages/RubricPage';
 import VisiMisiPage from '@/pages/VisiMisiPage';
+import ProfilLulusanPage from '@/pages/ProfilLulusanPage';
+import MappingCplPlPage from '@/pages/MappingCplPlPage';
+import MappingCplBkPage from '@/pages/MappingCplBkPage';
+import MappingBkMkPage from '@/pages/MappingBkMkPage';
+import MappingCplCpmkPage from '@/pages/MappingCplCpmkPage';
+import MappingCplCpmkMkPage from '@/pages/MappingCplCpmkMkPage';
+import BodyOfKnowledgePage from '@/pages/BodyOfKnowledgePage';
+import KomponenPenilaianPage from '@/pages/KomponenPenilaianPage';
+import BobotPenilaianPage from '@/pages/BobotPenilaianPage';
 import LoginPage from '@/pages/auth/LoginPage';
 import CallbackPage from '@/pages/auth/CallbackPage';
 import { ProtectedRoute, PublicRoute } from '@/components/auth/ProtectedRoute';
@@ -20,12 +27,19 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
-      { path: 'cpl', element: <CplPage /> },
-      { path: 'cpmk', element: <CpmkPage /> },
-      { path: 'sub-cpmk', element: <SubCpmkPage /> },
-      { path: 'assessments', element: <AssessmentPage /> },
-      { path: 'rubrics', element: <RubricPage /> },
       { path: 'visi-misi', element: <VisiMisiPage /> },
+      { path: 'profil-lulusan', element: <ProfilLulusanPage /> },
+      { path: 'mapping-cpl-pl', element: <MappingCplPlPage /> },
+      { path: 'mapping-cpl-bk', element: <MappingCplBkPage /> },
+      { path: 'mapping-bk-mk', element: <MappingBkMkPage /> },
+      { path: 'cpl', element: <CplPage /> },
+      { path: 'bahan-kajian', element: <BodyOfKnowledgePage /> },
+      { path: 'cpmk', element: <CpmkPage /> },
+      { path: 'mapping-cpl-cpmk', element: <MappingCplCpmkPage /> },
+      { path: 'mapping-cpl-cpmk-mk', element: <MappingCplCpmkMkPage /> },
+      { path: 'sub-cpmk', element: <SubCpmkPage /> },
+      { path: 'komponen-penilaian', element: <KomponenPenilaianPage /> },
+      { path: 'bobot-penilaian', element: <BobotPenilaianPage /> },
     ],
   },
 ]);

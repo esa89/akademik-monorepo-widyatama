@@ -18,89 +18,57 @@ export class CpmkService {
   constructor(private readonly repository: CpmkRepository) {}
 
   async findAll(query: QueryCpmkDto) {
-    this.logger.log(`Fetching CPMK with query: ${JSON.stringify(query)}`);
     return this.repository.findAll(query);
   }
 
   async findOne(id: string) {
-    this.logger.log(`Fetching CPMK by id: ${id}`);
     const item = await this.repository.findById(id);
-
-    if (!item) {
-      throw new NotFoundException(`CPMK with id '${id}' not found`);
-    }
-
+    if (!item) throw new NotFoundException(`CPMK with id '${id}' not found`);
     return item;
   }
 
   async create(data: CreateCpmkDto) {
-    this.logger.log(`Creating CPMK with code: ${data.code}`);
-
-    const exists = await this.repository.existsByCodeAndCourse(data.code, data.courseId);
+    const exists = await this.repository.existsByCodeAndCurriculum(data.code, data.curriculumId);
     if (exists) {
       throw new ConflictException(
-        `CPMK with code '${data.code}' already exists for this course`,
+        `CPMK with code '${data.code}' already exists in this curriculum`,
       );
     }
-
-    const item = await this.repository.create(data);
-    this.logger.log(`CPMK created with id: ${item.id}`);
-    return item;
+    return this.repository.create(data);
   }
 
   async update(id: string, data: UpdateCpmkDto) {
-    this.logger.log(`Updating CPMK id: ${id}`);
-
     const existing = await this.repository.findById(id);
-    if (!existing) {
-      throw new NotFoundException(`CPMK with id '${id}' not found`);
-    }
+    if (!existing) throw new NotFoundException(`CPMK with id '${id}' not found`);
 
     if (data.code && data.code !== existing.code) {
-      const courseId = data.courseId ?? existing.courseId;
-      const codeExists = await this.repository.existsByCodeAndCourse(data.code, courseId);
+      const curriculumId = data.curriculumId ?? existing.curriculumId;
+      const codeExists = await this.repository.existsByCodeAndCurriculum(data.code, curriculumId);
       if (codeExists) {
         throw new ConflictException(
-          `CPMK with code '${data.code}' already exists for this course`,
+          `CPMK with code '${data.code}' already exists in this curriculum`,
         );
       }
     }
 
-    const item = await this.repository.update(id, data);
-    this.logger.log(`CPMK updated: ${item.id}`);
-    return item;
+    return this.repository.update(id, data);
   }
 
   async remove(id: string) {
-    this.logger.log(`Deleting CPMK id: ${id}`);
-
     const existing = await this.repository.findById(id);
-    if (!existing) {
-      throw new NotFoundException(`CPMK with id '${id}' not found`);
-    }
-
-    const item = await this.repository.remove(id);
-    this.logger.log(`CPMK deleted: ${item.id}`);
-    return item;
+    if (!existing) throw new NotFoundException(`CPMK with id '${id}' not found`);
+    return this.repository.remove(id);
   }
 
   async mapCpl(id: string, data: MapCplDto) {
-    this.logger.log(`Mapping CPL to CPMK id: ${id}`);
-
     const existing = await this.repository.findById(id);
-    if (!existing) {
-      throw new NotFoundException(`CPMK with id '${id}' not found`);
-    }
+    if (!existing) throw new NotFoundException(`CPMK with id '${id}' not found`);
 
     const totalWeight = data.cpls.reduce((sum, c) => sum + c.weight, 0);
     if (totalWeight > 100) {
-      throw new BadRequestException(
-        `Total weight (${totalWeight}) exceeds maximum of 100`,
-      );
+      throw new BadRequestException(`Total weight (${totalWeight}) exceeds maximum of 100`);
     }
 
-    const item = await this.repository.mapCplToCpmk(id, data);
-    this.logger.log(`CPL mapped to CPMK: ${id}`);
-    return item;
+    return this.repository.mapCplToCpmk(id, data);
   }
 }

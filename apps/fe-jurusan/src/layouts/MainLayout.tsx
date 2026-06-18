@@ -1,30 +1,47 @@
 import { Sidebar } from '@widyatama/ui';
 import {
   LayoutDashboard, Target, BookOpen, Layers, ClipboardCheck,
-  BarChart3, LogOut, GraduationCap, Eye,
-  ChevronDown, Bell, Check, BookMarked,
+  BarChart3, LogOut, GraduationCap, Eye, Users,
+  ChevronDown, Bell, Check, BookMarked, Grid3X3, BookOpenCheck, GitMerge, Shuffle, Scale,
 } from 'lucide-react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth, useUser } from '@widyatama/sso-react';
 import { useQuery } from '@tanstack/react-query';
-import { graduateProfileService } from '@/services/obe.service';
-import { useApp, getStoredProfileId } from '@/contexts/AppContext';
-import type { GraduateProfile } from '@/types';
+import { curriculumService } from '@/services/obe.service';
+import { useApp, getStoredCurriculumId } from '@/contexts/AppContext';
+import type { Curriculum } from '@/types';
 
 // ─── Sidebar menu ──────────────────────────────────────────────────────────────
 
 const menuGroups = [
   {
-    group: 'OBE Management',
+    group: 'Umum',
     items: [
-      { key: 'dashboard',   label: 'Dashboard',   icon: <LayoutDashboard /> },
-      { key: 'visi-misi',   label: 'Visi & Misi', icon: <Eye /> },
-      { key: 'cpl',         label: 'CPL',          icon: <Target /> },
-      { key: 'cpmk',        label: 'CPMK',         icon: <BookOpen /> },
-      { key: 'sub-cpmk',   label: 'Sub CPMK',     icon: <Layers /> },
-      { key: 'assessments', label: 'Assessment',   icon: <ClipboardCheck /> },
-      { key: 'rubrics',     label: 'Rubrik',       icon: <BarChart3 /> },
+      { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard /> },
+    ],
+  },
+  {
+    group: 'Profil Program Studi',
+    items: [
+      { key: 'visi-misi',      label: 'Visi & Misi',    icon: <Eye /> },
+      { key: 'profil-lulusan', label: 'Profil Lulusan', icon: <Users /> },
+    ],
+  },
+  {
+    group: 'Capaian Pembelajaran',
+    items: [
+      { key: 'cpl',            label: 'CPL',             icon: <Target /> },
+      { key: 'bahan-kajian',   label: 'Bahan Kajian',    icon: <BookOpenCheck /> },
+      { key: 'mapping-cpl-pl', label: 'Mapping CPL – PL', icon: <Grid3X3 /> },
+      { key: 'mapping-cpl-bk', label: 'Mapping CPL – BK', icon: <GitMerge /> },
+      { key: 'mapping-bk-mk', label: 'Mapping BK – MK',  icon: <Shuffle /> },
+      { key: 'cpmk',                label: 'CPMK',                icon: <BookOpen /> },
+      { key: 'mapping-cpl-cpmk',    label: 'Mapping CPL – CPMK',  icon: <Grid3X3 /> },
+      { key: 'mapping-cpl-cpmk-mk', label: 'Mapping CPL–CPMK–MK', icon: <Shuffle /> },
+      { key: 'sub-cpmk',            label: 'Mapping & Create Sub CPMK',  icon: <Layers /> },
+      { key: 'komponen-penilaian',  label: 'Komponen Penilaian',          icon: <ClipboardCheck /> },
+      { key: 'bobot-penilaian',     label: 'Bobot Penilaian CPMK',        icon: <Scale /> },
     ],
   },
 ];
@@ -32,28 +49,31 @@ const menuGroups = [
 // ─── Curriculum Dropdown ───────────────────────────────────────────────────────
 
 function CurriculumDropdown() {
-  const { selectedProfile, setSelectedProfile } = useApp();
+  const { studyProgramId, selectedCurriculum, setSelectedCurriculum } = useApp();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Fetch all active graduate profiles
   const { data, isLoading } = useQuery({
-    queryKey: ['graduate-profiles', 'dropdown'],
-    queryFn: () => graduateProfileService.getAll({ isActive: true, limit: 100, sortBy: 'curriculumYear', sortOrder: 'desc' }),
+    queryKey: ['curricula', 'dropdown', studyProgramId],
+    queryFn: () => curriculumService.getAll({
+      studyProgramId: studyProgramId ?? undefined,
+      isActive: true,
+      limit: 100,
+      sortBy: 'year',
+      sortOrder: 'desc',
+    }),
+    staleTime: 5 * 60 * 1000,
   });
 
-  const profiles: GraduateProfile[] = data?.data ?? [];
+  const curricula: Curriculum[] = data?.data ?? [];
 
-  // Auto-restore last selected profile from localStorage on first load
   useEffect(() => {
-    if (selectedProfile || profiles.length === 0) return;
-    const storedId = getStoredProfileId();
-    const match = storedId ? profiles.find((p) => p.id === storedId) : null;
-    // Fallback: pick the first (most recent) active profile
-    setSelectedProfile(match ?? profiles[0] ?? null);
-  }, [profiles]); // eslint-disable-line
+    if (selectedCurriculum || curricula.length === 0) return;
+    const storedId = getStoredCurriculumId();
+    const match = storedId ? curricula.find((c) => c.id === storedId) : null;
+    setSelectedCurriculum(match ?? curricula[0] ?? null);
+  }, [curricula]); // eslint-disable-line
 
-  // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
@@ -62,8 +82,8 @@ function CurriculumDropdown() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const label = selectedProfile
-    ? `${selectedProfile.name} ${selectedProfile.curriculumYear}`
+  const label = selectedCurriculum
+    ? `${selectedCurriculum.name} ${selectedCurriculum.year}`
     : isLoading ? 'Memuat...' : 'Pilih Kurikulum';
 
   return (
@@ -73,7 +93,7 @@ function CurriculumDropdown() {
         className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-800 hover:bg-gray-100 transition-colors group"
       >
         <BookMarked size={16} className="text-primary" />
-        <span className="max-w-[220px] truncate">{label}</span>
+        <span className="max-w-[240px] truncate">{label}</span>
         <ChevronDown
           size={14}
           className={`text-gray-400 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
@@ -81,7 +101,7 @@ function CurriculumDropdown() {
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden">
+        <div className="absolute top-full left-0 mt-1 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden">
           <div className="px-3 py-2 border-b border-gray-100">
             <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Pilih Kurikulum</p>
           </div>
@@ -89,31 +109,33 @@ function CurriculumDropdown() {
             {isLoading && (
               <div className="px-3 py-4 text-xs text-center text-gray-400">Memuat...</div>
             )}
-            {!isLoading && profiles.length === 0 && (
-              <div className="px-3 py-4 text-xs text-center text-gray-400">Belum ada profil kurikulum</div>
+            {!isLoading && curricula.length === 0 && (
+              <div className="px-3 py-4 text-xs text-center text-gray-400">Belum ada kurikulum aktif</div>
             )}
-            {profiles.map((profile) => {
-              const isSelected = selectedProfile?.id === profile.id;
+            {curricula.map((curriculum) => {
+              const isSelected = selectedCurriculum?.id === curriculum.id;
               return (
                 <button
-                  key={profile.id}
-                  onClick={() => { setSelectedProfile(profile); setOpen(false); }}
+                  key={curriculum.id}
+                  onClick={() => { setSelectedCurriculum(curriculum); setOpen(false); }}
                   className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors
                     ${isSelected ? 'bg-primary/5' : ''}`}
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">{profile.name}</p>
-                    <p className="text-xs text-gray-400">Kurikulum {profile.curriculumYear} · {profile.totalCpl} CPL</p>
+                    <p className="text-sm font-medium text-gray-800 truncate">{curriculum.name}</p>
+                    <p className="text-xs text-gray-400">
+                      {curriculum.code} · Kurikulum {curriculum.year} · {curriculum.totalSks} SKS
+                    </p>
                   </div>
                   {isSelected && <Check size={14} className="text-primary shrink-0" />}
                 </button>
               );
             })}
           </div>
-          {selectedProfile && (
+          {selectedCurriculum && (
             <div className="border-t border-gray-100 px-3 py-2">
               <button
-                onClick={() => { setSelectedProfile(null); setOpen(false); }}
+                onClick={() => { setSelectedCurriculum(null); setOpen(false); }}
                 className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
               >
                 Tampilkan semua kurikulum
@@ -126,7 +148,7 @@ function CurriculumDropdown() {
   );
 }
 
-// ─── Custom App Header (replaces Topbar) ──────────────────────────────────────
+// ─── Custom App Header ────────────────────────────────────────────────────────
 
 function AppHeader() {
   const { user } = useUser();
@@ -152,7 +174,6 @@ function AppHeader() {
 
   return (
     <header className="w-full h-16 bg-white shadow-sm border-b flex items-center justify-between px-6 relative shrink-0">
-      {/* Left: Curriculum dropdown */}
       <div className="flex items-center gap-3">
         {studyProgramName && (
           <span className="text-xs font-medium text-gray-400 border-r border-gray-200 pr-3">
@@ -162,7 +183,6 @@ function AppHeader() {
         <CurriculumDropdown />
       </div>
 
-      {/* Right: Notification + User */}
       <div className="flex items-center gap-3" ref={profileRef}>
         <button className="relative text-gray-500 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
           <Bell size={18} />

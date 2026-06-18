@@ -17,6 +17,11 @@ enum CplCategory {
   KETERAMPILAN_KHUSUS
 }
 
+enum VisiMisiType {
+  VISI
+  MISI
+}
+
 enum AssessmentType {
   QUIZ
   ASSIGNMENT
@@ -28,18 +33,51 @@ enum AssessmentType {
   OTHER
 }
 
-model GraduateProfile {
-  id             String   @id @default(uuid())
-  code           String   @unique
-  name           String
-  description    String?
-  vision         String?
-  mission        String?
+model AssessmentComponent {
+  id           String                       @id @default(uuid())
+  code         String                       @unique
+  name         String
+  description  String?
+  isActive     Boolean                      @default(true)
+  createdAt    DateTime                     @default(now())
+  updatedAt    DateTime                     @updatedAt
+  weightEntries CourseCpmkAssessmentWeight[]
+
+  @@index([code])
+  @@index([name])
+  @@index([isActive])
+  @@map("assessment_components")
+}
+
+model VisiMisi {
+  id             String        @id @default(uuid())
+  type           VisiMisiType
+  content        String
   curriculumYear Int
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  cpls           Cpl[]
+  orderNumber    Int           @default(1)
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([type])
+  @@index([curriculumYear])
+  @@index([isActive])
+  @@map("visi_misi")
+}
+
+model GraduateProfile {
+  id                 String               @id @default(uuid())
+  code               String               @unique
+  name               String
+  description        String?
+  vision             String?
+  mission            String?
+  curriculumYear     Int
+  isActive           Boolean              @default(true)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  cpls               Cpl[]
+  cplProfileMappings CplProfileMapping[]
 
   @@index([code])
   @@index([name])
@@ -59,8 +97,10 @@ model Cpl {
   updatedAt         DateTime         @updatedAt
   graduateProfileId String?
   graduateProfile   GraduateProfile? @relation(fields: [graduateProfileId], references: [id], onDelete: SetNull)
-  cplMappings       CplBahanKajianMapping[]
-  cpmkMappings      CpmkCplMapping[]
+  cplMappings        CplBahanKajianMapping[]
+  cpmkMappings       CpmkCplMapping[]
+  cplProfileMappings CplProfileMapping[]
+  cplBkMappings      CplBodyOfKnowledgeMapping[]
 
   @@index([code])
   @@index([name])
@@ -103,43 +143,58 @@ model CplBahanKajianMapping {
 }
 
 model Cpmk {
-  id           String           @id @default(uuid())
-  courseId     String
-  code         String
-  name         String
-  description  String?
-  orderNumber  Int
-  isActive     Boolean          @default(true)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  cpmkMappings CpmkCplMapping[]
-  subCpmks     SubCpmk[]
+  id             String                       @id @default(uuid())
+  curriculumId   String
+  code           String
+  name           String
+  description    String?
+  isActive       Boolean                      @default(true)
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
+  cpmkMappings   CpmkCplMapping[]
+  subCpmks       SubCpmk[]
+  courseMappings CpmkCourseMapping[]
+  weightEntries  CourseCpmkAssessmentWeight[]
 
-  @@unique([code, courseId])
+  @@unique([curriculumId, code])
+  @@index([curriculumId])
   @@index([code])
-  @@index([courseId])
-  @@index([orderNumber])
   @@map("cpmk")
 }
 
+model CpmkCourseMapping {
+  id       String @id @default(uuid())
+  cpmkId   String
+  courseId String
+  cpmk     Cpmk   @relation(fields: [cpmkId], references: [id], onDelete: Cascade)
+
+  @@unique([cpmkId, courseId])
+  @@index([cpmkId])
+  @@index([courseId])
+  @@map("cpmk_course_mapping")
+}
+
 model SubCpmk {
-  id               String        @id @default(uuid())
+  id               String       @id @default(uuid())
+  curriculumId     String
+  courseId         String
   cpmkId           String
   code             String
   name             String
   description      String?
-  orderNumber      Int
-  targetPercentage Int
-  isActive         Boolean       @default(true)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  cpmk             Cpmk          @relation(fields: [cpmkId], references: [id], onDelete: Cascade)
+  orderNumber      Int          @default(0)
+  targetPercentage Int          @default(0)
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  cpmk             Cpmk         @relation(fields: [cpmkId], references: [id], onDelete: Cascade)
   assessments      Assessment[]
 
-  @@unique([code, cpmkId])
-  @@index([code])
+  @@unique([courseId, cpmkId, code])
+  @@index([curriculumId])
+  @@index([courseId])
   @@index([cpmkId])
-  @@index([orderNumber])
+  @@index([code])
   @@map("sub_cpmk")
 }
 
@@ -201,4 +256,90 @@ model CpmkCplMapping {
   @@index([cpmkId])
   @@index([cplId])
   @@map("cpmk_cpl_mappings")
+}
+
+model BodyOfKnowledge {
+  id           String   @id @default(uuid())
+  curriculumId String
+  code         String
+  name         String
+  reference    String?
+  description  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  cplBkMappings    CplBodyOfKnowledgeMapping[]
+  bkCourseMappings BkCourseMapping[]
+
+  @@unique([curriculumId, code])
+  @@index([curriculumId])
+  @@index([code])
+  @@index([name])
+  @@index([isActive])
+  @@map("body_of_knowledges")
+}
+
+model BkCourseMapping {
+  id                String          @id @default(uuid())
+  curriculumId      String
+  bodyOfKnowledgeId String
+  courseId          String
+  createdAt         DateTime        @default(now())
+  bodyOfKnowledge   BodyOfKnowledge @relation(fields: [bodyOfKnowledgeId], references: [id], onDelete: Cascade)
+
+  @@unique([curriculumId, bodyOfKnowledgeId, courseId])
+  @@index([curriculumId])
+  @@index([bodyOfKnowledgeId])
+  @@index([courseId])
+  @@map("bk_course_mappings")
+}
+
+model CplProfileMapping {
+  id                String          @id @default(uuid())
+  curriculumId      String
+  cplId             String
+  graduateProfileId String
+  createdAt         DateTime        @default(now())
+  cpl               Cpl             @relation(fields: [cplId], references: [id], onDelete: Cascade)
+  graduateProfile   GraduateProfile @relation(fields: [graduateProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([curriculumId, cplId, graduateProfileId])
+  @@index([curriculumId])
+  @@index([cplId])
+  @@index([graduateProfileId])
+  @@map("cpl_profile_mappings")
+}
+
+model CplBodyOfKnowledgeMapping {
+  id                String          @id @default(uuid())
+  curriculumId      String
+  cplId             String
+  bodyOfKnowledgeId String
+  createdAt         DateTime        @default(now())
+  cpl               Cpl             @relation(fields: [cplId], references: [id], onDelete: Cascade)
+  bodyOfKnowledge   BodyOfKnowledge @relation(fields: [bodyOfKnowledgeId], references: [id], onDelete: Cascade)
+
+  @@unique([curriculumId, cplId, bodyOfKnowledgeId])
+  @@index([curriculumId])
+  @@index([cplId])
+  @@index([bodyOfKnowledgeId])
+  @@map("cpl_body_of_knowledge_mappings")
+}
+
+model CourseCpmkAssessmentWeight {
+  id                    String              @id @default(uuid())
+  courseId              String
+  cpmkId                String
+  assessmentComponentId String
+  weight                Int                 @default(0)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  cpmk                  Cpmk                @relation(fields: [cpmkId], references: [id], onDelete: Cascade)
+  assessmentComponent   AssessmentComponent @relation(fields: [assessmentComponentId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, cpmkId, assessmentComponentId])
+  @@index([courseId])
+  @@index([cpmkId])
+  @@index([assessmentComponentId])
+  @@map("course_cpmk_assessment_weights")
 }

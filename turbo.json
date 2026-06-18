@@ -9,7 +9,7 @@
     "dev": {
       "cache": false,
       "persistent": true,
-      "env": ["DATABASE_URL", "NODE_ENV", "SWAGGER_ENABLED", "AUTHENTIK_URL", "AUTHENTIK_CLIENT_ID", "AUTHENTIK_CLIENT_SECRET", "FE_IDENTITY_URL"]
+      "env": ["DATABASE_URL", "NODE_ENV", "SWAGGER_ENABLED", "CORS_ORIGINS", "IDENTITY_API_URL", "AUTHENTIK_URL", "AUTHENTIK_CLIENT_ID", "AUTHENTIK_CLIENT_SECRET", "FE_IDENTITY_URL", "AUTHENTIK_ADMIN_TOKEN"]
     },
     "lint": {
       "outputs": []

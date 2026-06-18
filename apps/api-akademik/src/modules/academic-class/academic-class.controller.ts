@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -21,6 +22,7 @@ import { AcademicClassService } from './academic-class.service';
 import { CreateAcademicClassDto } from './dto/create-academic-class.dto';
 import { UpdateAcademicClassDto } from './dto/update-academic-class.dto';
 import { QueryAcademicClassDto } from './dto/query-academic-class.dto';
+import { ImportGradesDto } from './dto/import-grades.dto';
 
 @ApiTags('Academic Classes')
 @ApiBearerAuth()
@@ -80,5 +82,16 @@ export class AcademicClassController {
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Academic Class not found' })
   async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
     return this.service.remove(id);
+  }
+
+  @Patch(':id/grades')
+  @ApiOperation({ summary: 'Import/update nilai mahasiswa dalam kelas via Excel (NIM, Kehadiran, UTS, UAS, Quiz, Tugas)' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Grades imported successfully' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Academic Class not found' })
+  async importGrades(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: ImportGradesDto,
+  ) {
+    return this.service.importGrades(id, dto);
   }
 }

@@ -13,11 +13,10 @@ type CpmkWithCount = Prisma.CpmkGetPayload<{
 
 export interface CpmkMapped {
   id: string;
-  courseId: string;
+  curriculumId: string;
   code: string;
   name: string;
   description: string | null;
-  orderNumber: number;
   isActive: boolean;
   totalCpl: number;
   createdAt: Date;
@@ -33,7 +32,10 @@ export class CpmkRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(query: QueryCpmkDto): Promise<PaginatedResult<CpmkMapped>> {
-    const { page = 1, limit = 10, sortBy = 'orderNumber', sortOrder = 'asc', search, courseId, isActive } = query;
+    const {
+      page = 1, limit = 10, sortBy = 'code', sortOrder = 'asc',
+      search, curriculumId, isActive,
+    } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.CpmkWhereInput = {};
@@ -45,13 +47,8 @@ export class CpmkRepository {
       ];
     }
 
-    if (courseId !== undefined) {
-      where.courseId = courseId;
-    }
-
-    if (isActive !== undefined) {
-      where.isActive = isActive;
-    }
+    if (curriculumId) where.curriculumId = curriculumId;
+    if (isActive !== undefined) where.isActive = isActive;
 
     const [data, total] = await Promise.all([
       this.prisma.cpmk.findMany({
@@ -59,17 +56,12 @@ export class CpmkRepository {
         skip,
         take: limit,
         orderBy: { [sortBy]: sortOrder },
-        include: {
-          _count: {
-            select: { cpmkMappings: true },
-          },
-        },
+        include: { _count: { select: { cpmkMappings: true } } },
       }),
       this.prisma.cpmk.count({ where }),
     ]);
 
-    const mapped = data.map((item) => this.mapToResponse(item));
-    return createPaginatedResult(mapped, total, page, limit);
+    return createPaginatedResult(data.map((item) => this.mapToResponse(item)), total, page, limit);
   }
 
   async findById(id: string): Promise<CpmkDetailMapped | null> {
@@ -77,11 +69,7 @@ export class CpmkRepository {
       where: { id },
       include: {
         cpmkMappings: {
-          include: {
-            cpl: {
-              select: { id: true, code: true, name: true },
-            },
-          },
+          include: { cpl: { select: { id: true, code: true, name: true } } },
         },
       },
     });
@@ -91,28 +79,29 @@ export class CpmkRepository {
     return {
       ...this.mapToResponse({ ...item, _count: { cpmkMappings: item.cpmkMappings.length } }),
       cpls: item.cpmkMappings.map((m) => ({
-        id: m.cpl.id,
-        code: m.cpl.code,
-        name: m.cpl.name,
-        weight: m.weight,
+        id: m.cpl.id, code: m.cpl.code, name: m.cpl.name, weight: m.weight,
       })),
     };
   }
 
-  async findByCodeAndCourse(code: string, courseId: string) {
+  async findByCodeAndCurriculum(code: string, curriculumId: string) {
     return this.prisma.cpmk.findUnique({
-      where: { code_courseId: { code, courseId } },
+      where: { curriculumId_code: { curriculumId, code } },
     });
+  }
+
+  async existsByCodeAndCurriculum(code: string, curriculumId: string): Promise<boolean> {
+    const count = await this.prisma.cpmk.count({ where: { code, curriculumId } });
+    return count > 0;
   }
 
   async create(data: CreateCpmkDto) {
     return this.prisma.cpmk.create({
       data: {
-        courseId: data.courseId,
+        curriculumId: data.curriculumId,
         code: data.code,
         name: data.name,
         description: data.description,
-        orderNumber: data.orderNumber,
         isActive: data.isActive ?? true,
       },
     });
@@ -120,59 +109,34 @@ export class CpmkRepository {
 
   async update(id: string, data: UpdateCpmkDto) {
     const updateData: Prisma.CpmkUpdateInput = {};
-
-    if (data.courseId !== undefined) updateData.courseId = data.courseId;
+    if (data.curriculumId !== undefined) updateData.curriculumId = data.curriculumId;
     if (data.code !== undefined) updateData.code = data.code;
     if (data.name !== undefined) updateData.name = data.name;
     if (data.description !== undefined) updateData.description = data.description;
-    if (data.orderNumber !== undefined) updateData.orderNumber = data.orderNumber;
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
 
-    return this.prisma.cpmk.update({
-      where: { id },
-      data: updateData,
-    });
+    return this.prisma.cpmk.update({ where: { id }, data: updateData });
   }
 
   async remove(id: string) {
-    return this.prisma.cpmk.delete({
-      where: { id },
-    });
-  }
-
-  async existsByCodeAndCourse(code: string, courseId: string): Promise<boolean> {
-    const count = await this.prisma.cpmk.count({
-      where: { code, courseId },
-    });
-    return count > 0;
+    return this.prisma.cpmk.delete({ where: { id } });
   }
 
   async mapCplToCpmk(cpmkId: string, data: MapCplDto) {
     return this.prisma.$transaction(async (tx) => {
-      const cpmk = await tx.cpmk.findUnique({
-        where: { id: cpmkId },
-      });
-      if (!cpmk) {
-        throw new Error('CPMK not found');
-      }
+      const cpmk = await tx.cpmk.findUnique({ where: { id: cpmkId } });
+      if (!cpmk) throw new Error('CPMK not found');
 
       const cplIds = data.cpls.map((c) => c.cplId);
       const existingCpls = await tx.cpl.findMany({
-        where: { id: { in: cplIds } },
-        select: { id: true },
+        where: { id: { in: cplIds } }, select: { id: true },
       });
       const existingCplIds = new Set(existingCpls.map((c) => c.id));
       const missingCplIds = cplIds.filter((id) => !existingCplIds.has(id));
-      if (missingCplIds.length > 0) {
-        throw new Error(`CPL not found: ${missingCplIds.join(', ')}`);
-      }
+      if (missingCplIds.length > 0) throw new Error(`CPL not found: ${missingCplIds.join(', ')}`);
 
       await tx.cpmkCplMapping.createMany({
-        data: data.cpls.map((c) => ({
-          cpmkId,
-          cplId: c.cplId,
-          weight: c.weight,
-        })),
+        data: data.cpls.map((c) => ({ cpmkId, cplId: c.cplId, weight: c.weight })),
         skipDuplicates: true,
       });
 
@@ -180,11 +144,7 @@ export class CpmkRepository {
         where: { id: cpmkId },
         include: {
           cpmkMappings: {
-            include: {
-              cpl: {
-                select: { id: true, code: true, name: true },
-              },
-            },
+            include: { cpl: { select: { id: true, code: true, name: true } } },
           },
         },
       });
@@ -194,11 +154,10 @@ export class CpmkRepository {
   private mapToResponse(item: CpmkWithCount): CpmkMapped {
     return {
       id: item.id,
-      courseId: item.courseId,
+      curriculumId: item.curriculumId,
       code: item.code,
       name: item.name,
       description: item.description,
-      orderNumber: item.orderNumber,
       isActive: item.isActive,
       totalCpl: item._count.cpmkMappings,
       createdAt: item.createdAt,
