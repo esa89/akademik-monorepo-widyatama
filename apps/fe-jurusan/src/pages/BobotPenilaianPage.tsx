@@ -129,7 +129,7 @@ function ImportWeightDrawer({
           if (!error) {
             compCols.forEach(({ idx, comp }) => {
               if (!comp) return;
-              const val = parseInt(String(row[idx] ?? '0'), 10);
+              const val = parseFloat(String(row[idx] ?? '0'));
               weights[comp.id] = isNaN(val) ? 0 : Math.min(100, Math.max(0, val));
             });
           }
@@ -282,7 +282,7 @@ function ImportWeightDrawer({
                   <span className="font-medium text-gray-800 text-xs">{r.cpmkCode}</span>
                   {r.valid && (
                     <span className="text-gray-400 text-xs ml-1">
-                      (total: {Object.values(r.weights).reduce((s, v) => s + v, 0)})
+                      (total: {(Math.round(Object.values(r.weights).reduce((s, v) => s + v, 0) * 100) / 100)})
                     </span>
                   )}
                 </div>
@@ -402,7 +402,7 @@ export default function BobotPenilaianPage() {
   }, [matrixRows, rowTotal]);
 
   const validMkCount = useMemo(
-    () => [...mkTotals.values()].filter((t) => t === 100).length,
+    () => [...mkTotals.values()].filter((t) => Math.abs(t - 100) < 0.01).length,
     [mkTotals],
   );
   const mkCount = mkTotals.size;
@@ -410,7 +410,7 @@ export default function BobotPenilaianPage() {
   // ─── handlers ─────────────────────────────────────────────────────────────────
 
   const handleCellChange = (courseId: string, cpmkId: string, componentId: string, raw: string) => {
-    const parsed = parseInt(raw, 10);
+    const parsed = parseFloat(raw);
     const val = isNaN(parsed) ? 0 : Math.min(100, Math.max(0, parsed));
     setWeights((prev) => ({ ...prev, [wKey(courseId, cpmkId, componentId)]: val }));
     setIsDirty(true);
@@ -465,16 +465,21 @@ export default function BobotPenilaianPage() {
 
   const mkStatusStyle = (courseId: string) => {
     const t = mkTotals.get(courseId) ?? 0;
-    if (t === 100) return 'text-green-700 font-bold';
+    if (Math.abs(t - 100) < 0.01) return 'text-green-700 font-bold';
     if (t > 0) return 'text-red-600 font-semibold';
     return 'text-gray-400';
   };
 
   const mkCodeCellBg = (courseId: string) => {
     const t = mkTotals.get(courseId) ?? 0;
-    if (t === 100) return 'bg-green-50';
+    if (Math.abs(t - 100) < 0.01) return 'bg-green-50';
     if (t > 0) return 'bg-red-50';
     return 'bg-white';
+  };
+
+  const fmtWeight = (v: number) => {
+    const r = Math.round(v * 100) / 100;
+    return r === Math.floor(r) ? String(r) : r.toFixed(2).replace(/\.?0+$/, '');
   };
 
   // ─── render ───────────────────────────────────────────────────────────────────
@@ -623,14 +628,15 @@ export default function BobotPenilaianPage() {
                             type="number"
                             min="0"
                             max="100"
+                            step="0.01"
                             value={weights[wKey(row.courseId, row.cpmkId, comp.id)] ?? 0}
                             onChange={(e) => handleCellChange(row.courseId, row.cpmkId, comp.id, e.target.value)}
-                            className="w-14 text-center border border-gray-200 rounded px-1 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary hover:border-gray-400 transition-colors bg-transparent"
+                            className="w-16 text-center border border-gray-200 rounded px-1 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary hover:border-gray-400 transition-colors bg-transparent"
                           />
                         </td>
                       ))}
                       <td className={`border border-gray-200 px-3 py-2 text-center font-semibold text-sm ${rt > 0 ? mkStatusStyle(row.courseId) : 'text-gray-400'}`}>
-                        {rt > 0 ? rt : ''}
+                        {rt > 0 ? fmtWeight(rt) : ''}
                       </td>
                     </tr>
                   );

@@ -2,7 +2,7 @@ import { Sidebar } from '@widyatama/ui';
 import {
   LayoutDashboard, Target, BookOpen, Layers, ClipboardCheck,
   BarChart3, LogOut, GraduationCap, Eye, Users,
-  ChevronDown, Bell, Check, BookMarked, Grid3X3, BookOpenCheck, GitMerge, Shuffle, Scale,
+  ChevronDown, Bell, Check, BookMarked, Grid3X3, BookOpenCheck, GitMerge, Shuffle, Scale, Route, BarChart2,
 } from 'lucide-react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useRef, useEffect } from 'react';
@@ -26,6 +26,14 @@ const menuGroups = [
     items: [
       { key: 'visi-misi',      label: 'Visi & Misi',    icon: <Eye /> },
       { key: 'profil-lulusan', label: 'Profil Lulusan', icon: <Users /> },
+    ],
+  },
+  {
+    group: 'Monitoring',
+    items: [
+      { key: 'tracking-obe',         label: 'Tracking OBE',          icon: <Route /> },
+      { key: 'tracking-matakuliah',  label: 'Tracking Mata Kuliah',  icon: <BookOpen /> },
+      { key: 'distribusi-nilai',     label: 'Distribusi Nilai',       icon: <BarChart2 /> },
     ],
   },
   {

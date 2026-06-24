@@ -148,3 +148,35 @@ export const courseCpmkWeightService = {
   deleteAllByCourse: (courseId: string) =>
     obeApi.delete(`/course-cpmk-weights/course/${courseId}`).then((r) => r.data),
 };
+
+// ─── ACADEMIC CLASS (from api-akademik) ──────────────────────────
+export const academicClassService = {
+  getAll: (params?: Record<string, unknown>) =>
+    akademikApi.get<PaginatedResponse<{
+      id: string; code: string; name: string; isActive: boolean;
+      totalStudents: number;
+      course: { id: string; code: string; name: string };
+      semester: { id: string; name: string; code: string };
+    }>>('/academic-classes', { params }).then((r) => r.data),
+  getById: (id: string) =>
+    akademikApi.get<ApiDetailResponse<{
+      id: string; code: string; name: string; isActive: boolean;
+      totalStudents: number;
+      course: { id: string; code: string; name: string };
+      semester: { id: string; name: string; code: string };
+      students: { student: { id: string; nim: string; name: string } }[];
+    }>>(`/academic-classes/${id}`).then((r) => r.data),
+};
+
+// ─── STUDENT CPMK SCORES ─────────────────────────────────────────
+export const studentCpmkScoreService = {
+  getByClass: (classId: string) =>
+    obeApi.get<{
+      success: boolean; data: {
+        id: string; classId: string; studentId: string; courseId: string;
+        cpmkId: string; assessmentComponentId: string; score: number;
+        cpmk: { id: string; code: string; name: string };
+        assessmentComponent: { id: string; code: string; name: string };
+      }[]; meta: { total: number };
+    }>('/student-cpmk-scores', { params: { classId, limit: 5000 } }).then((r) => r.data),
+};

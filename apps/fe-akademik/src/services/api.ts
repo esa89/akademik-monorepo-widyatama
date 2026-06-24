@@ -2,7 +2,14 @@ import axios from 'axios';
 import { authRef } from './auth-ref';
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_AKADEMIK_URL || 'http://localhost:3001',
+  baseURL: import.meta.env.VITE_API_AKADEMIK_URL || 'http://localhost:3015/api',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+export const obeApi = axios.create({
+  baseURL: import.meta.env.VITE_API_OBE_URL || 'http://localhost:3014/api',
   headers: {
     'Content-Type': 'application/json',
   },

@@ -34,14 +34,15 @@ enum AssessmentType {
 }
 
 model AssessmentComponent {
-  id           String                       @id @default(uuid())
-  code         String                       @unique
-  name         String
-  description  String?
-  isActive     Boolean                      @default(true)
-  createdAt    DateTime                     @default(now())
-  updatedAt    DateTime                     @updatedAt
+  id            String                       @id @default(uuid())
+  code          String                       @unique
+  name          String
+  description   String?
+  isActive      Boolean                      @default(true)
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
   weightEntries CourseCpmkAssessmentWeight[]
+  studentScores StudentCpmkScore[]
 
   @@index([code])
   @@index([name])
@@ -155,6 +156,7 @@ model Cpmk {
   subCpmks       SubCpmk[]
   courseMappings CpmkCourseMapping[]
   weightEntries  CourseCpmkAssessmentWeight[]
+  studentScores  StudentCpmkScore[]
 
   @@unique([curriculumId, code])
   @@index([curriculumId])
@@ -342,4 +344,26 @@ model CourseCpmkAssessmentWeight {
   @@index([cpmkId])
   @@index([assessmentComponentId])
   @@map("course_cpmk_assessment_weights")
+}
+
+model StudentCpmkScore {
+  id                    String              @id @default(uuid())
+  classId               String
+  studentId             String
+  courseId              String
+  cpmkId                String
+  assessmentComponentId String
+  score                 Float               @default(0)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  cpmk                Cpmk                @relation(fields: [cpmkId], references: [id], onDelete: Cascade)
+  assessmentComponent AssessmentComponent @relation(fields: [assessmentComponentId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, studentId, cpmkId, assessmentComponentId])
+  @@index([classId])
+  @@index([studentId])
+  @@index([courseId])
+  @@index([cpmkId])
+  @@map("student_cpmk_scores")
 }

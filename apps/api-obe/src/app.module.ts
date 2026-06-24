@@ -18,6 +18,7 @@ import { CpmkCourseMappingModule } from './modules/cpmk-course-mapping/cpmk-cour
 import { CpmkCplMappingModule } from './modules/cpmk-cpl-mapping/cpmk-cpl-mapping.module';
 import { AssessmentComponentModule } from './modules/assessment-component/assessment-component.module';
 import { CourseCpmkWeightModule } from './modules/course-cpmk-weight/course-cpmk-weight.module';
+import { StudentCpmkScoreModule } from './modules/student-cpmk-score/student-cpmk-score.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { CourseCpmkWeightModule } from './modules/course-cpmk-weight/course-cpmk
     CpmkCplMappingModule,
     AssessmentComponentModule,
     CourseCpmkWeightModule,
+    StudentCpmkScoreModule,
   ],
 })
 export class AppModule {}

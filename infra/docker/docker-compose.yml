@@ -166,7 +166,7 @@ services:
       - "3015:3015"
     environment:
       - DATABASE_URL=postgresql://authentik:authentik@postgres:5432/systama_akademik?schema=public
-      - CORS_ORIGINS=http://localhost:6175,http://localhost:5174,http://localhost:6174,http://localhost:3000,http://akademik.widyatama.127.0.0.1.nip.io:6175,http://jurusan.widyatama.127.0.0.1.nip.io:6174
+      - CORS_ORIGINS=http://localhost:6175,http://localhost:5174,http://localhost:6174,http://localhost:6173,http://localhost:3000,http://akademik.widyatama.127.0.0.1.nip.io:6175,http://jurusan.widyatama.127.0.0.1.nip.io:6174,http://dosen.widyatama.127.0.0.1.nip.io:6173
       - NODE_ENV=development
       - SWAGGER_ENABLED=true
       - IDENTITY_API_URL=http://api-identity:3013
@@ -190,7 +190,7 @@ services:
       - "3014:3014"
     environment:
       - DATABASE_URL=postgresql://authentik:authentik@postgres:5432/systama_obe?schema=public
-      - CORS_ORIGINS=http://localhost:6174,http://localhost:3000,http://jurusan.widyatama.127.0.0.1.nip.io:6174
+      - CORS_ORIGINS=http://localhost:6175,http://localhost:6174,http://localhost:6173,http://localhost:3000,http://akademik.widyatama.127.0.0.1.nip.io:6175,http://jurusan.widyatama.127.0.0.1.nip.io:6174,http://dosen.widyatama.127.0.0.1.nip.io:6173
       - NODE_ENV=development
       - SWAGGER_ENABLED=true
     depends_on:
@@ -214,6 +214,8 @@ services:
     ports:
       - "6173:6173"
     environment:
+      - VITE_API_AKADEMIK_URL=http://localhost:3015/api
+      - VITE_API_OBE_URL=http://localhost:3014/api
       - VITE_API_IDENTITY_URL=http://localhost:3013
       - VITE_AUTHENTIK_CLIENT_ID=fe-dosen
       - VITE_AUTHENTIK_CLIENT_SECRET=widyatama-client-secret-change-me-in-production
@@ -294,6 +296,7 @@ services:
       - "6175:6175"
     environment:
       - VITE_API_AKADEMIK_URL=http://localhost:3015/api
+      - VITE_API_OBE_URL=http://localhost:3014/api
       - VITE_API_IDENTITY_URL=http://localhost:3013
       - VITE_AUTHENTIK_CLIENT_ID=fe-akademik
       - VITE_AUTHENTIK_CLIENT_SECRET=widyatama-client-secret-change-me-in-production

@@ -16,6 +16,7 @@ import { academicSemesterService } from '@/services/academicSemester.service';
 import { courseService } from '@/services/course.service';
 import { lecturerService } from '@/services/lecturer.service';
 import { studentService } from '@/services/student.service';
+import { obeService } from '@/services/obeService';
 import { SearchCombobox } from '@/components/common/SearchCombobox';
 import type { AcademicClass } from '@/types';
 import {
@@ -30,24 +31,67 @@ interface XlsxStudentRow {
   nim: string;
   studentId: string | null;
   name: string | null;
-  kehadiran: number | null;
-  uts: number | null;
-  uas: number | null;
-  quiz: number | null;
-  tugas: number | null;
-  grade: string | null;
   nilaiAkhir: number | null;
+}
+
+// ─── Grade helpers ────────────────────────────────────────────────────────────
+
+function getGradeFromScore(score: number): string {
+  if (score >= 85) return 'A';
+  if (score >= 80) return 'A-';
+  if (score >= 75) return 'B+';
+  if (score >= 70) return 'B';
+  if (score >= 65) return 'B-';
+  if (score >= 60) return 'C+';
+  if (score >= 55) return 'C';
+  if (score >= 40) return 'D';
+  return 'E';
 }
 
 function gradeBadgeClass(grade: string | null | undefined) {
   const map: Record<string, string> = {
-    A: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    B: 'bg-blue-50 text-blue-700 border-blue-200',
-    C: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-    D: 'bg-orange-50 text-orange-700 border-orange-200',
-    E: 'bg-red-50 text-red-700 border-red-200',
+    'A':  'bg-emerald-100 text-emerald-700 border-emerald-200',
+    'A-': 'bg-emerald-50 text-emerald-600 border-emerald-200',
+    'B+': 'bg-blue-100 text-blue-700 border-blue-200',
+    'B':  'bg-blue-50 text-blue-700 border-blue-200',
+    'B-': 'bg-indigo-50 text-indigo-600 border-indigo-200',
+    'C+': 'bg-yellow-100 text-yellow-700 border-yellow-200',
+    'C':  'bg-yellow-50 text-yellow-600 border-yellow-100',
+    'D':  'bg-orange-50 text-orange-700 border-orange-200',
+    'E':  'bg-red-50 text-red-700 border-red-200',
   };
   return grade ? (map[grade] ?? 'bg-gray-100 text-gray-600') : 'bg-gray-100 text-gray-400';
+}
+
+// ─── OBE score seeding ────────────────────────────────────────────────────────
+// Nilai akhir langsung di-assign ke semua komponen CPMK.
+// Karena Σ(nilaiAkhir * weight_i / 100) = nilaiAkhir × (Σweight / 100) = nilaiAkhir
+// ketika total bobot = 100%, nilai akhir yang dihasilkan akan sama persis.
+
+function seedScoresFromFinal(
+  studentId: string,
+  nilaiAkhir: number,
+  entries: { cpmkId: string; assessmentComponentId: string; weight: number }[],
+): { studentId: string; cpmkId: string; assessmentComponentId: string; score: number }[] {
+  const score = Math.max(0, Math.min(100, Math.round(nilaiAkhir)));
+  return entries.map((e) => ({
+    studentId,
+    cpmkId: e.cpmkId,
+    assessmentComponentId: e.assessmentComponentId,
+    score,
+  }));
+}
+
+function downloadTemplate() {
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['NIM', 'Nilai Akhir'],
+    ['2100001', 85],
+    ['2100002', 78],
+  ]);
+  ws['!cols'] = [{ wch: 16 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, ws, 'Template');
+  XLSX.writeFile(wb, 'template_nilai_kelas.xlsx');
 }
 
 // ─── Zod Schema ───────────────────────────────────────────────────────────────
@@ -309,25 +353,20 @@ export default function AcademicClassPage() {
         classId = res.data.id;
       }
 
-      // Simpan nilai jika ada data grade dari XLSX
-      const gradesPayload = xlsxRows
-        .filter((r) => r.nim && (r.kehadiran !== null || r.uts !== null || r.uas !== null ||
-                                   r.quiz !== null || r.tugas !== null || r.grade !== null))
-        .map((r) => ({
-          nim:        r.nim,
-          ...(r.kehadiran  !== null && { kehadiran:  r.kehadiran }),
-          ...(r.uts        !== null && { uts:        r.uts }),
-          ...(r.uas        !== null && { uas:        r.uas }),
-          ...(r.quiz       !== null && { quiz:       r.quiz }),
-          ...(r.tugas      !== null && { tugas:      r.tugas }),
-          ...(r.grade      !== null && { grade:      r.grade }),
-          ...(r.nilaiAkhir !== null && { nilaiAkhir: r.nilaiAkhir }),
-        }));
-
-      if (gradesPayload.length > 0) {
-        const chunkSize = 50;
-        for (let i = 0; i < gradesPayload.length; i += chunkSize) {
-          await academicClassService.importGrades(classId, gradesPayload.slice(i, i + chunkSize));
+      // Auto-seed nilai CPMK di OBE jika ada data Nilai Akhir dari XLSX
+      const rowsWithScore = xlsxRows.filter((r) => r.studentId && r.nilaiAkhir !== null);
+      if (rowsWithScore.length > 0) {
+        const weightsRes = await obeService.getWeightsByCourse(formData.courseId);
+        const weightEntries = weightsRes.data ?? [];
+        if (weightEntries.length > 0) {
+          const allScoreEntries = rowsWithScore.flatMap((r) =>
+            seedScoresFromFinal(r.studentId!, r.nilaiAkhir!, weightEntries)
+          );
+          await obeService.bulkSaveScores({
+            classId,
+            courseId: formData.courseId,
+            scores: allScoreEntries,
+          });
         }
       }
 
@@ -358,11 +397,6 @@ export default function AcademicClassPage() {
     return isNaN(n) ? null : Math.min(100, Math.max(0, n));
   };
 
-  const toGrade = (v: any): string | null => {
-    const s = String(v ?? '').trim().toUpperCase();
-    return /^[A-E]$/.test(s) ? s : null;
-  };
-
   const handleXlsxUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -383,13 +417,7 @@ export default function AcademicClassPage() {
             nim:        String(row[0] ?? '').trim(),
             studentId:  null as string | null,
             name:       null as string | null,
-            kehadiran:  toFloat(row[1]),
-            uts:        toFloat(row[2]),
-            uas:        toFloat(row[3]),
-            quiz:       toFloat(row[4]),
-            tugas:      toFloat(row[5]),
-            grade:      toGrade(row[6]),
-            nilaiAkhir: toFloat(row[7]),
+            nilaiAkhir: toFloat(row[1]),
           }))
           .filter((r) => r.nim && r.nim.toLowerCase() !== 'nim' && r.nim.toLowerCase() !== 'npm')
           .map((r) => {
@@ -399,8 +427,8 @@ export default function AcademicClassPage() {
 
         setXlsxRows(parsed);
 
-        const found    = parsed.filter((r) => r.studentId).map((r) => r.studentId as string);
-        const merged   = [...new Set([...watchedStudentIds, ...found])];
+        const found  = parsed.filter((r) => r.studentId).map((r) => r.studentId as string);
+        const merged = [...new Set([...watchedStudentIds, ...found])];
         setValue('studentIds', merged, { shouldValidate: true });
       } catch {
         showToast('error', 'Gagal membaca file XLSX. Pastikan format file benar.');
@@ -718,81 +746,82 @@ export default function AcademicClassPage() {
             <div className="mb-3 space-y-2">
               <input ref={xlsxInputRef} type="file" accept=".xlsx,.xls" className="hidden"
                 onChange={handleXlsxUpload} />
-              <button type="button" onClick={() => xlsxInputRef.current?.click()}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:border-primary hover:text-primary transition-colors">
-                <FileSpreadsheet size={14} />
-                {xlsxRows.length > 0 ? 'Ganti File XLSX' : 'Upload NIM + Nilai dari XLSX'}
-              </button>
+
+              <div className="flex gap-2">
+                <button type="button" onClick={() => xlsxInputRef.current?.click()}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:border-primary hover:text-primary transition-colors">
+                  <Upload size={14} />
+                  {xlsxRows.length > 0 ? 'Ganti File XLSX' : 'Upload Excel (NIM + Nilai Akhir)'}
+                </button>
+                <button type="button" onClick={downloadTemplate}
+                  className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-lg text-xs font-medium text-gray-500 hover:border-primary hover:text-primary hover:bg-primary/5 transition-colors whitespace-nowrap">
+                  <FileSpreadsheet size={14} />
+                  Template
+                </button>
+              </div>
 
               {/* Format hint */}
-              <div className="px-3 py-2 bg-gray-50 rounded-lg border border-gray-100 text-[11px] text-gray-500 space-y-0.5">
-                <p className="font-semibold text-gray-600 mb-1">Format kolom Excel:</p>
-                <p><span className="font-medium text-gray-700">A:</span> NIM/NPM &nbsp;
-                   <span className="font-medium text-gray-700">B:</span> Kehadiran &nbsp;
-                   <span className="font-medium text-gray-700">C:</span> UTS &nbsp;
-                   <span className="font-medium text-gray-700">D:</span> UAS &nbsp;
-                   <span className="font-medium text-gray-700">E:</span> Quiz &nbsp;
-                   <span className="font-medium text-gray-700">F:</span> Tugas &nbsp;
-                   <span className="font-medium text-gray-700">G:</span> Grade (A–E) &nbsp;
-                   <span className="font-medium text-gray-700">H:</span> Nilai Akhir</p>
-                <p className="text-gray-400">• Kolom B–H opsional — bisa hanya isi NIM saja untuk enroll</p>
-                <p className="text-gray-400">• Grade (kolom G) ditentukan dosen: A, B, C, D, atau E</p>
+              <div className="px-3 py-2 bg-blue-50 rounded-lg border border-blue-100 text-[11px] text-blue-700 space-y-0.5">
+                <p className="font-semibold text-blue-800 mb-1">Format Excel (2 kolom):</p>
+                <p>
+                  <span className="font-mono bg-white border border-blue-200 px-1 rounded">A</span> NIM &nbsp;·&nbsp;
+                  <span className="font-mono bg-white border border-blue-200 px-1 rounded">B</span> Nilai Akhir <span className="text-blue-500">(angka 0–100)</span>
+                </p>
+                <p className="text-blue-500 mt-0.5">• Nilai Akhir = akumulasi nilai numerik (bukan huruf mutu)</p>
+                <p className="text-blue-500">• Nilai CPMK akan otomatis terisi berdasarkan nilai akhir</p>
               </div>
 
               {/* Preview tabel setelah upload */}
               {xlsxRows.length > 0 && (() => {
                 const found   = xlsxRows.filter((r) => r.studentId);
                 const missing = xlsxRows.filter((r) => !r.studentId);
-                const hasGrades = xlsxRows.some((r) =>
-                  r.kehadiran !== null || r.uts !== null || r.uas !== null ||
-                  r.quiz !== null || r.tugas !== null || r.grade !== null);
+                const hasScores = xlsxRows.some((r) => r.nilaiAkhir !== null);
                 return (
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-[11px]">
                       <span>
                         <span className="text-emerald-600 font-semibold">{found.length} ditemukan</span>
                         {missing.length > 0 && <span className="text-red-500 ml-1.5">{missing.length} tidak ditemukan</span>}
-                        {hasGrades && <span className="text-blue-600 ml-1.5">· ada data nilai</span>}
+                        {hasScores && <span className="text-blue-600 ml-1.5">· nilai CPMK akan di-seed otomatis</span>}
                       </span>
-                      <button type="button" onClick={() => { setXlsxRows([]); setValue('studentIds', watchedStudentIds.filter(id => !found.map(r => r.studentId).includes(id))); }}
-                        className="text-red-400 hover:text-red-600 hover:underline">hapus</button>
+                      <button type="button" onClick={() => {
+                        setXlsxRows([]);
+                        setValue('studentIds', watchedStudentIds.filter((id) => !found.map((r) => r.studentId).includes(id)));
+                      }} className="text-red-400 hover:text-red-600 hover:underline">hapus</button>
                     </div>
                     <div className="border border-gray-200 rounded-lg overflow-hidden">
-                      <div className="overflow-y-auto overflow-x-auto max-h-48">
-                        <table className="w-full text-[11px] min-w-[480px]">
+                      <div className="overflow-y-auto max-h-48">
+                        <table className="w-full text-[11px]">
                           <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
                             <tr>
                               <th className="px-2 py-1.5 text-left font-semibold text-gray-500">NIM</th>
                               <th className="px-2 py-1.5 text-left font-semibold text-gray-500">Nama</th>
-                              <th className="px-2 py-1.5 text-center font-semibold text-gray-500">Hadir</th>
-                              <th className="px-2 py-1.5 text-center font-semibold text-gray-500">UTS</th>
-                              <th className="px-2 py-1.5 text-center font-semibold text-gray-500">UAS</th>
-                              <th className="px-2 py-1.5 text-center font-semibold text-gray-500">Quiz</th>
-                              <th className="px-2 py-1.5 text-center font-semibold text-gray-500">Tugas</th>
+                              <th className="px-2 py-1.5 text-center font-semibold text-gray-500">Nilai Akhir</th>
                               <th className="px-2 py-1.5 text-center font-semibold text-gray-500">Grade</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {xlsxRows.map((row, i) => (
-                              <tr key={i} className={`border-b border-gray-50 ${!row.studentId ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
-                                <td className="px-2 py-1.5 font-mono text-gray-600">{row.nim}</td>
-                                <td className="px-2 py-1.5 text-gray-700 max-w-[100px] truncate">
-                                  {row.name ?? <span className="text-red-400 italic">Tidak ditemukan</span>}
-                                </td>
-                                <td className="px-2 py-1.5 text-center text-gray-600">{row.kehadiran ?? '—'}</td>
-                                <td className="px-2 py-1.5 text-center text-gray-600">{row.uts ?? '—'}</td>
-                                <td className="px-2 py-1.5 text-center text-gray-600">{row.uas ?? '—'}</td>
-                                <td className="px-2 py-1.5 text-center text-gray-600">{row.quiz ?? '—'}</td>
-                                <td className="px-2 py-1.5 text-center text-gray-600">{row.tugas ?? '—'}</td>
-                                <td className="px-2 py-1.5 text-center">
-                                  {row.grade ? (
-                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${gradeBadgeClass(row.grade)}`}>
-                                      {row.grade}
-                                    </span>
-                                  ) : '—'}
-                                </td>
-                              </tr>
-                            ))}
+                            {xlsxRows.map((row, i) => {
+                              const grade = row.nilaiAkhir !== null ? getGradeFromScore(row.nilaiAkhir) : null;
+                              return (
+                                <tr key={i} className={`border-b border-gray-50 ${!row.studentId ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
+                                  <td className="px-2 py-1.5 font-mono text-gray-600">{row.nim}</td>
+                                  <td className="px-2 py-1.5 text-gray-700 max-w-[140px] truncate">
+                                    {row.name ?? <span className="text-red-400 italic">Tidak ditemukan</span>}
+                                  </td>
+                                  <td className="px-2 py-1.5 text-center font-semibold text-gray-700">
+                                    {row.nilaiAkhir !== null ? row.nilaiAkhir : <span className="text-gray-300">—</span>}
+                                  </td>
+                                  <td className="px-2 py-1.5 text-center">
+                                    {grade ? (
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${gradeBadgeClass(grade)}`}>
+                                        {grade}
+                                      </span>
+                                    ) : <span className="text-gray-300">—</span>}
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>

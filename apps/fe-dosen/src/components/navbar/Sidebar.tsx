@@ -1,13 +1,8 @@
 import { Sidebar as WidyatamaSidebar } from "@widyatama/ui"
 import {
   LayoutDashboard,
-  CalendarDays,
-  ClipboardList,
-  BookOpen,
-  Settings,
   LogOut,
-  Monitor,
-  Notebook
+  ClipboardPen,
 } from "lucide-react"
 import { useLocation, useNavigate } from "react-router-dom"
 
@@ -15,25 +10,14 @@ export default function Sidebar() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  // key aktif diambil dari path URL saat ini
   const activeKey = location.pathname.split("/")[1] || "dashboard"
 
   const menu = [
     {
-      group: "Perkuliahan",
+      group: "Menu",
       items: [
         { key: "dashboard", label: "Dashboard", icon: <LayoutDashboard /> },
-        { key: "jadwal", label: "Jadwal", icon: <CalendarDays /> },
-        { key: "kehadiran", label: "Kehadiran", icon: <ClipboardList /> },
-        { key: "nilai", label: "Nilai", icon: <BookOpen /> },
-      ],
-    },
-    {
-      group: "Lainnya",
-      items: [
-        { key: "persiapan-kuliah", label: "Persiapan Kuliah", icon: <Notebook /> },
-        { key: "monitoring-TA", label: "Monitoring TA", icon: <Monitor /> },
-        { key: "pengaturan", label: "Pengaturan", icon: <Settings /> },
+        { key: "nilai", label: "Input Nilai", icon: <ClipboardPen /> },
       ],
     },
   ]
@@ -43,7 +27,7 @@ export default function Sidebar() {
   }
 
   return (
-    <div className="sticky">
+    <div className="sticky top-0 h-screen">
       <WidyatamaSidebar
         title="SYTAMA"
         titleIcon={<LayoutDashboard />}

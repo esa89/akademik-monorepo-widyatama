@@ -14,6 +14,9 @@ import MappingCplCpmkMkPage from '@/pages/MappingCplCpmkMkPage';
 import BodyOfKnowledgePage from '@/pages/BodyOfKnowledgePage';
 import KomponenPenilaianPage from '@/pages/KomponenPenilaianPage';
 import BobotPenilaianPage from '@/pages/BobotPenilaianPage';
+import TrackingObePage from '@/pages/TrackingObePage';
+import TrackingMatakuliahPage from '@/pages/TrackingMatakuliahPage';
+import DistribusiNilaiPage from '@/pages/DistribusiNilaiPage';
 import LoginPage from '@/pages/auth/LoginPage';
 import CallbackPage from '@/pages/auth/CallbackPage';
 import { ProtectedRoute, PublicRoute } from '@/components/auth/ProtectedRoute';
@@ -40,6 +43,9 @@ export const router = createBrowserRouter([
       { path: 'sub-cpmk', element: <SubCpmkPage /> },
       { path: 'komponen-penilaian', element: <KomponenPenilaianPage /> },
       { path: 'bobot-penilaian', element: <BobotPenilaianPage /> },
+      { path: 'tracking-obe', element: <TrackingObePage /> },
+      { path: 'tracking-matakuliah', element: <TrackingMatakuliahPage /> },
+      { path: 'distribusi-nilai', element: <DistribusiNilaiPage /> },
     ],
   },
 ]);
