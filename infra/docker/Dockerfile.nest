@@ -36,12 +36,11 @@ ENTRYPOINT ["/entrypoint.sh"]
 # Build stage
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 ARG APP_NAME
 
-# Re-link workspace packages after full source copy
+# Install fresh (shamefully-hoist requires clean node_modules)
 RUN pnpm install --frozen-lockfile
 
 # Build shared packages first
