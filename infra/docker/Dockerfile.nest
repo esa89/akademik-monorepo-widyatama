@@ -48,6 +48,11 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm build --filter=@widyatama/sso-types
 RUN pnpm build --filter=@widyatama/sso-core
 
+# Generate Prisma client if schema exists
+RUN if [ -f "apps/${APP_NAME}/prisma/schema.prisma" ]; then \
+      cd apps/${APP_NAME} && npx prisma generate; \
+    fi
+
 # Build the specific app
 RUN pnpm build --filter=${APP_NAME}
 
