@@ -15,8 +15,8 @@ RUN find apps -type f ! -name 'package.json' -delete
 COPY packages/ ./packages/
 RUN find packages -type f ! -name 'package.json' -delete
 
-# Only install dependencies for this app and its dependencies
-RUN pnpm install --frozen-lockfile --filter ${APP_NAME}...
+# Install all workspace dependencies (required for shared package builds)
+RUN pnpm install --frozen-lockfile
 
 # Development stage
 FROM base AS development
@@ -40,6 +40,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 ARG APP_NAME
+
+# Re-link workspace packages after full source copy
+RUN pnpm install --frozen-lockfile
 
 # Build shared packages first
 RUN pnpm build --filter=@widyatama/sso-types

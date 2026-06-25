@@ -9,7 +9,6 @@ import type {
   CPMK,
   PLO,
   NilaiSIAKAD,
-  SiakadWeights,
 } from '@/types/obe.types';
 import { DEFAULT_SIAKAD_WEIGHTS } from '@/types/obe.types';
 
@@ -116,10 +115,6 @@ export const dummyPLO: PLO[] = [
 // Raw Scores (nilai mentah per mahasiswa per subCPMK)
 // key format: "npm:subCPMKId"
 // ============================================================
-
-function makeKey(npm: string, subId: string): string {
-  return `${npm}:${subId}`;
-}
 
 /** Nilai mentah dari gambar (sebagian, sisanya di-generate) */
 const baseRawScores: Record<string, Record<string, number>> = {

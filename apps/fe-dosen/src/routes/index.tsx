@@ -1,5 +1,5 @@
 import React from "react";
-import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
+import { createBrowserRouter, Navigate } from "react-router-dom";
 import MainLayout from "@/layouts/MainLayout";
 import Dashboard from "@/pages/DashboardPage";
 import Jadwal from "@/pages/JadwalPage";
