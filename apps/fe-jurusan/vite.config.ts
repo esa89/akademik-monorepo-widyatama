@@ -9,6 +9,7 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
       "@ui-assets": path.resolve(__dirname, "../../packages/ui/src/assets"),
     },
+    dedupe: ["react", "react-dom"],
   },
   server: {
     allowedHosts: [".127.0.0.1.nip.io"],

@@ -10,6 +10,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
       '@ui-assets': path.resolve(__dirname, '../../packages/ui/src/assets'),
     },
+    dedupe: ['react', 'react-dom'],
   },
   server: {
     port: 3020,

@@ -167,12 +167,25 @@ export class AuthService {
 
     // ── Fetch user info via admin API ───────────────────────────────────
     const adminToken = this.configService.get<string>('AUTHENTIK_ADMIN_TOKEN', '');
-    const { data: usersData } = await axios.get(
-      `${this.authentikUrl}/api/v3/core/users/?search=${encodeURIComponent(username)}`,
-      { headers: { Authorization: `Bearer ${adminToken}` } },
-    );
+    const baseUrl = `${this.authentikUrl}/api/v3/core/users/`;
+    const authHeader = { Authorization: `Bearer ${adminToken}` };
 
-    const user = (usersData.results as any[])?.find(u => u.username === username);
+    // Try by exact username first; Authentik allows login with email so try email fallback
+    let user: any = null;
+    const { data: byUsername } = await axios.get(
+      `${baseUrl}?username=${encodeURIComponent(username)}`,
+      { headers: authHeader },
+    );
+    user = (byUsername.results as any[])?.[0];
+
+    if (!user) {
+      const { data: byEmail } = await axios.get(
+        `${baseUrl}?email=${encodeURIComponent(username)}`,
+        { headers: authHeader },
+      );
+      user = (byEmail.results as any[])?.[0];
+    }
+
     if (!user) throw new InternalServerErrorException('User validated but not found in Authentik');
 
     return {
