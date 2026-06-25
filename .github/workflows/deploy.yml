@@ -93,6 +93,8 @@ jobs:
           source:   "infra/docker/compose.prod.yml,infra/authentik/blueprints"
           target:   /root/sytama
           strip_components: 2
+          timeout:  60s
+          command_timeout: 10m
 
       - name: Deploy
         uses: appleboy/ssh-action@v1
