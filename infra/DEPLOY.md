@@ -194,25 +194,26 @@ Tunggu sampai GitHub Actions **selesai (hijau)** sebelum lanjut ke langkah berik
 
 ## LANGKAH 6 — Restore Database di VPS
 
-Jalankan setelah GitHub Actions selesai (`compose.prod.yml` sudah ada di `/root/sytama/`).
+Authentik auto-inisialisasi database saat container pertama naik, sehingga restore langsung
+akan error "already exists". Solusi: hapus volume postgres dulu, restore ke database kosong.
 
 ```bash
-# Jalankan postgres dan redis dulu (sebelum service lain)
-docker compose -f /root/sytama/compose.prod.yml --env-file /root/sytama/.env up -d postgres redis
+# 1. Stop semua service
+docker compose -f /root/sytama/compose.prod.yml --env-file /root/sytama/.env down
 
-# Tunggu postgres siap (~15 detik)
+# 2. Hapus volume postgres yang sudah diinisialisasi Authentik
+docker volume rm sytama-prod_postgres_data
+
+# 3. Jalankan postgres saja dulu
+docker compose -f /root/sytama/compose.prod.yml --env-file /root/sytama/.env up -d postgres
 sleep 15
 
-# Restore dump
+# 4. Restore dump ke database yang masih kosong
 docker exec -i sytama-prod-postgres-1 \
   psql -U authentik < /root/sytama/sytama_backup.sql
 
-# Buat database tambahan jika belum ada di dump
-docker exec sytama-prod-postgres-1 psql -U authentik \
-  -c "CREATE DATABASE systama_akademik;" 2>/dev/null || true
-
-docker exec sytama-prod-postgres-1 psql -U authentik \
-  -c "CREATE DATABASE systama_obe;" 2>/dev/null || true
+# 5. Jalankan semua service
+docker compose -f /root/sytama/compose.prod.yml --env-file /root/sytama/.env up -d
 ```
 
 ---

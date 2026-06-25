@@ -11,7 +11,11 @@ async function bootstrap() {
   const httpAdapter = app.getHttpAdapter();
   httpAdapter.use(require('express').urlencoded({ extended: true }));
 
-  // CORS - allow localhost and nip.io aliases
+  // CORS - allow localhost, nip.io aliases, and production origins from env
+  const extraOrigins = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
+    : [];
+
   app.enableCors({
     origin: [
       'http://localhost:5174',
@@ -19,8 +23,8 @@ async function bootstrap() {
       'http://localhost:5175',
       'http://localhost:6174',
       'http://localhost:6175',
-      // nip.io aliases
       /^https?:\/\/.*\.127\.0\.0\.1\.nip\.io(:\d+)?$/,
+      ...extraOrigins,
     ],
     credentials: true,
   });
