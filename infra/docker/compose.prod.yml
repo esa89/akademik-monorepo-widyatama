@@ -1,197 +1,205 @@
-version: '3.8'
+# =============================================================================
+# SYTAMA — Production Docker Compose
+# =============================================================================
+# Deploy di VPS dengan Cloudflare Tunnel (tanpa nginx — CF Tunnel langsung
+# ke setiap port service).
+#
+# Sebelum menjalankan:
+#   cp infra/docker/.env.prod.example /root/sytama/.env
+#   # Edit .env sesuai nilai produksi
+#   docker compose -f /root/sytama/compose.prod.yml --env-file /root/sytama/.env up -d
+#
+# Port mapping untuk Cloudflare Tunnel routes:
+#   auth.obe-if-utama.web.id        → localhost:9010  (Authentik)
+#   sso.obe-if-utama.web.id         → localhost:5174  (fe-identity)
+#   api-identity.obe-if-utama.web.id → localhost:3013 (api-identity)
+#   api-akademik.obe-if-utama.web.id → localhost:3015 (api-akademik)
+#   api-obe.obe-if-utama.web.id     → localhost:3014  (api-obe)
+#   prodi.obe-if-utama.web.id       → localhost:6174  (fe-jurusan)
+#   akademik.obe-if-utama.web.id    → localhost:6175  (fe-akademik)
+#   dosen.obe-if-utama.web.id       → localhost:6173  (fe-dosen)
+# =============================================================================
+
+name: sytama-prod
 
 services:
-  # Database
+
+  # ── Database ─────────────────────────────────────────────────────────────────
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB:       ${PG_DB}
+      POSTGRES_USER:     ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASS}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER} -d ${PG_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
-      - akademik-network
+      - sytama
 
-  # Redis
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     networks:
-      - akademik-network
+      - sytama
 
-  # API Services
-  api-nilai:
-    build:
-      context: ../../
-      dockerfile: infra/docker/Dockerfile.nest
-      target: production
-      args:
-        APP_NAME: api-nilai
-    environment:
-      - NODE_ENV=production
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
+  # ── Authentik SSO ─────────────────────────────────────────────────────────────
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2025.4
     restart: unless-stopped
-    depends_on:
-      - postgres
-      - redis
-    networks:
-      - akademik-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.api-nilai.rule=Host(`api-nilai.widyatama.ac.id`)"
-      - "traefik.http.routers.api-nilai.tls=true"
-      - "traefik.http.routers.api-nilai.tls.certresolver=letsencrypt"
-
-  api-kehadiran:
-    build:
-      context: ../../
-      dockerfile: infra/docker/Dockerfile.nest
-      target: production
-      args:
-        APP_NAME: api-kehadiran
+    command: server
     environment:
-      - NODE_ENV=production
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
-    restart: unless-stopped
+      AUTHENTIK_SECRET_KEY:             ${AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_POSTGRESQL__HOST:       postgres
+      AUTHENTIK_POSTGRESQL__USER:       ${PG_USER}
+      AUTHENTIK_POSTGRESQL__PASSWORD:   ${PG_PASS}
+      AUTHENTIK_POSTGRESQL__NAME:       ${PG_DB}
+      AUTHENTIK_REDIS__HOST:            redis
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+      AUTHENTIK_CORS__ENABLED:          "true"
+      AUTHENTIK_CORS__ALLOWED_ORIGINS:  "https://prodi.obe-if-utama.web.id,https://akademik.obe-if-utama.web.id,https://dosen.obe-if-utama.web.id,https://sso.obe-if-utama.web.id,https://api-identity.obe-if-utama.web.id"
+      AUTHENTIK_BOOTSTRAP_EMAIL:        ${AUTHENTIK_BOOTSTRAP_EMAIL}
+      AUTHENTIK_BOOTSTRAP_PASSWORD:     ${AUTHENTIK_BOOTSTRAP_PASSWORD}
+    ports:
+      - "9010:9000"
+    volumes:
+      - authentik_media:/media
+      - authentik_templates:/templates
+      - ./blueprints:/blueprints/custom
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
-      - akademik-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.api-kehadiran.rule=Host(`api-kehadiran.widyatama.ac.id`)"
-      - "traefik.http.routers.api-kehadiran.tls=true"
-      - "traefik.http.routers.api-kehadiran.tls.certresolver=letsencrypt"
+      - sytama
 
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2025.4
+    restart: unless-stopped
+    command: worker
+    environment:
+      AUTHENTIK_SECRET_KEY:           ${AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_POSTGRESQL__HOST:     postgres
+      AUTHENTIK_POSTGRESQL__USER:     ${PG_USER}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+      AUTHENTIK_POSTGRESQL__NAME:     ${PG_DB}
+      AUTHENTIK_REDIS__HOST:          redis
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+      AUTHENTIK_BOOTSTRAP_EMAIL:      ${AUTHENTIK_BOOTSTRAP_EMAIL}
+      AUTHENTIK_BOOTSTRAP_PASSWORD:   ${AUTHENTIK_BOOTSTRAP_PASSWORD}
+    volumes:
+      - authentik_media:/media
+      - authentik_templates:/templates
+      - ./blueprints:/blueprints/custom
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - sytama
+
+  # ── Backend APIs ──────────────────────────────────────────────────────────────
   api-identity:
-    build:
-      context: ../../
-      dockerfile: infra/docker/Dockerfile.nest
-      target: production
-      args:
-        APP_NAME: api-identity
-    environment:
-      - NODE_ENV=production
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
-      - AUTHENTIK_ISSUER_URL=${AUTHENTIK_ISSUER_URL}
+    image: ghcr.io/esa89/akademik-monorepo-widyatama/api-identity:latest
     restart: unless-stopped
+    ports:
+      - "3013:3013"
+    environment:
+      PORT:                    3013
+      NODE_ENV:                production
+      AUTHENTIK_URL:           http://authentik-server:9000
+      AUTHENTIK_CLIENT_ID:     fe-identity
+      AUTHENTIK_CLIENT_SECRET: ${VITE_AUTHENTIK_CLIENT_SECRET}
+      AUTHENTIK_ADMIN_TOKEN:   ${AUTHENTIK_ADMIN_TOKEN}
+      FE_IDENTITY_URL:         https://sso.obe-if-utama.web.id
+      FE_DOSEN_URL:            https://dosen.obe-if-utama.web.id
+      CORS_ORIGINS:            https://prodi.obe-if-utama.web.id,https://akademik.obe-if-utama.web.id,https://dosen.obe-if-utama.web.id,https://sso.obe-if-utama.web.id
     depends_on:
-      - postgres
-      - redis
+      - authentik-server
     networks:
-      - akademik-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.api-identity.rule=Host(`api-identity.widyatama.ac.id`)"
-      - "traefik.http.routers.api-identity.tls=true"
-      - "traefik.http.routers.api-identity.tls.certresolver=letsencrypt"
+      - sytama
 
-  # Frontend Services
-  fe-dosen:
-    build:
-      context: ../../
-      dockerfile: infra/docker/Dockerfile.next
-      target: production
-      args:
-        APP_NAME: fe-dosen
-    environment:
-      - NODE_ENV=production
-      - AUTHENTIK_ISSUER_URL=${AUTHENTIK_ISSUER_URL}
-      - AUTHENTIK_CLIENT_ID=${AUTHENTIK_CLIENT_ID_DOSEN}
-      - AUTHENTIK_CLIENT_SECRET=${AUTHENTIK_CLIENT_SECRET_DOSEN}
+  api-akademik:
+    image: ghcr.io/esa89/akademik-monorepo-widyatama/api-akademik:latest
     restart: unless-stopped
+    ports:
+      - "3015:3015"
+    environment:
+      PORT:             3015
+      NODE_ENV:         production
+      DATABASE_URL:     postgresql://${PG_USER}:${PG_PASS}@postgres:5432/systama_akademik
+      CORS_ORIGINS:     https://prodi.obe-if-utama.web.id,https://akademik.obe-if-utama.web.id,https://dosen.obe-if-utama.web.id
+      IDENTITY_API_URL: http://api-identity:3013
+      SWAGGER_ENABLED:  "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
-      - akademik-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.fe-dosen.rule=Host(`dosen.widyatama.ac.id`)"
-      - "traefik.http.routers.fe-dosen.tls=true"
-      - "traefik.http.routers.fe-dosen.tls.certresolver=letsencrypt"
+      - sytama
 
-  fe-mahasiswa:
-    build:
-      context: ../../
-      dockerfile: infra/docker/Dockerfile.next
-      target: production
-      args:
-        APP_NAME: fe-mahasiswa
-    environment:
-      - NODE_ENV=production
-      - AUTHENTIK_ISSUER_URL=${AUTHENTIK_ISSUER_URL}
-      - AUTHENTIK_CLIENT_ID=${AUTHENTIK_CLIENT_ID_MAHASISWA}
-      - AUTHENTIK_CLIENT_SECRET=${AUTHENTIK_CLIENT_SECRET_MAHASISWA}
+  api-obe:
+    image: ghcr.io/esa89/akademik-monorepo-widyatama/api-obe:latest
     restart: unless-stopped
+    ports:
+      - "3014:3014"
+    environment:
+      PORT:            3014
+      NODE_ENV:        production
+      DATABASE_URL:    postgresql://${PG_USER}:${PG_PASS}@postgres:5432/systama_obe
+      CORS_ORIGINS:    https://prodi.obe-if-utama.web.id,https://akademik.obe-if-utama.web.id,https://dosen.obe-if-utama.web.id
+      SWAGGER_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
-      - akademik-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.fe-mahasiswa.rule=Host(`mahasiswa.widyatama.ac.id`)"
-      - "traefik.http.routers.fe-mahasiswa.tls=true"
-      - "traefik.http.routers.fe-mahasiswa.tls.certresolver=letsencrypt"
+      - sytama
+
+  # ── Frontends ─────────────────────────────────────────────────────────────────
+  fe-identity:
+    image: ghcr.io/esa89/akademik-monorepo-widyatama/fe-identity:latest
+    restart: unless-stopped
+    ports:
+      - "5174:3000"
+    networks:
+      - sytama
+
+  fe-jurusan:
+    image: ghcr.io/esa89/akademik-monorepo-widyatama/fe-jurusan:latest
+    restart: unless-stopped
+    ports:
+      - "6174:3000"
+    networks:
+      - sytama
 
   fe-akademik:
-    build:
-      context: ../../
-      dockerfile: infra/docker/Dockerfile.vite
-      target: production
-      args:
-        APP_NAME: fe-akademik
-    environment:
-      - NODE_ENV=production
-      - AUTHENTIK_ISSUER_URL=${AUTHENTIK_ISSUER_URL}
-      - AUTHENTIK_CLIENT_ID=${AUTHENTIK_CLIENT_ID_AKADEMIK}
-      - AUTHENTIK_CLIENT_SECRET=${AUTHENTIK_CLIENT_SECRET_AKADEMIK}
+    image: ghcr.io/esa89/akademik-monorepo-widyatama/fe-akademik:latest
     restart: unless-stopped
-    networks:
-      - akademik-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.fe-akademik.rule=Host(`akademik.widyatama.ac.id`)"
-      - "traefik.http.routers.fe-akademik.tls=true"
-      - "traefik.http.routers.fe-akademik.tls.certresolver=letsencrypt"
-
-  # Reverse Proxy
-  traefik:
-    image: traefik:v3.0
-    command:
-      - --api.dashboard=true
-      - --api.debug=true
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
-      - --providers.file.directory=/dynamic
-      - --providers.file.watch=true
-      - --entrypoints.web.address=:80
-      - --entrypoints.websecure.address=:443
-      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
-      - --certificatesresolvers.letsencrypt.acme.email=admin@widyatama.ac.id
-      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
     ports:
-      - "80:80"
-      - "443:443"
-      - "8080:8080"  # Traefik dashboard
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik/dynamic:/dynamic:ro
-      - traefik_letsencrypt:/letsencrypt
+      - "6175:3000"
     networks:
-      - akademik-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.dashboard.rule=Host(`traefik.widyatama.ac.id`)"
-      - "traefik.http.routers.dashboard.tls=true"
-      - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.dashboard.service=api@internal"
+      - sytama
+
+  fe-dosen:
+    image: ghcr.io/esa89/akademik-monorepo-widyatama/fe-dosen:latest
+    restart: unless-stopped
+    ports:
+      - "6173:3000"
+    networks:
+      - sytama
 
 volumes:
   postgres_data:
-  traefik_letsencrypt:
+  authentik_media:
+  authentik_templates:
 
 networks:
-  akademik-network:
+  sytama:
     driver: bridge

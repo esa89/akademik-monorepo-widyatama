@@ -1,0 +1,117 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  REPO:     esa89/akademik-monorepo-widyatama
+
+jobs:
+  # ── Build & push semua images ke GHCR ───────────────────────────────────────
+  build:
+    name: Build ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Backend
+          - service:    api-identity
+            dockerfile: infra/docker/Dockerfile.nest
+          - service:    api-akademik
+            dockerfile: infra/docker/Dockerfile.nest
+          - service:    api-obe
+            dockerfile: infra/docker/Dockerfile.nest
+          # Frontend
+          - service:    fe-identity
+            dockerfile: infra/docker/Dockerfile.vite
+          - service:    fe-jurusan
+            dockerfile: infra/docker/Dockerfile.vite
+          - service:    fe-akademik
+            dockerfile: infra/docker/Dockerfile.vite
+          - service:    fe-dosen
+            dockerfile: infra/docker/Dockerfile.vite
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login ke GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & Push ${{ matrix.service }}
+        uses: docker/build-push-action@v5
+        with:
+          context:    .
+          file:       ${{ matrix.dockerfile }}
+          push:       true
+          tags:       ghcr.io/${{ env.REPO }}/${{ matrix.service }}:latest
+          target:     production
+          build-args: |
+            APP_NAME=${{ matrix.service }}
+            VITE_AUTHENTIK_ISSUER_URL=${{ secrets.VITE_AUTHENTIK_ISSUER_URL }}
+            VITE_AUTHENTIK_CLIENT_SECRET=${{ secrets.VITE_AUTHENTIK_CLIENT_SECRET }}
+            VITE_AUTHENTIK_CLIENT_ID=${{ matrix.service }}
+            VITE_API_AKADEMIK_URL=https://api-akademik.obe-if-utama.web.id/api
+            VITE_API_OBE_URL=https://api-obe.obe-if-utama.web.id/api
+            VITE_API_IDENTITY_URL=https://api-identity.obe-if-utama.web.id
+            VITE_STUDY_PROGRAM_ID=${{ secrets.VITE_STUDY_PROGRAM_ID }}
+            VITE_STUDY_PROGRAM_NAME=${{ secrets.VITE_STUDY_PROGRAM_NAME }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to:   type=gha,mode=max,scope=${{ matrix.service }}
+
+  # ── Deploy ke VPS via SSH ────────────────────────────────────────────────────
+  deploy:
+    name: Deploy ke VPS
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (untuk compose.prod.yml & blueprints)
+        uses: actions/checkout@v4
+
+      - name: Copy file ke VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host:     ${{ secrets.VPS_HOST }}
+          port:     ${{ secrets.VPS_PORT }}
+          username: root
+          key:      ${{ secrets.VPS_SSH_KEY }}
+          source:   "infra/docker/compose.prod.yml,infra/authentik/blueprints"
+          target:   /root/sytama
+          strip_components: 2
+
+      - name: Deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host:     ${{ secrets.VPS_HOST }}
+          port:     ${{ secrets.VPS_PORT }}
+          username: root
+          key:      ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /root/sytama
+
+            # Login ke GHCR
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull image terbaru
+            docker compose -f compose.prod.yml --env-file .env pull
+
+            # Restart service (zero-downtime per service)
+            docker compose -f compose.prod.yml --env-file .env up -d --remove-orphans
+
+            # Bersihkan image lama
+            docker image prune -f
