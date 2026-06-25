@@ -119,6 +119,7 @@ services:
       AUTHENTIK_CLIENT_ID:     fe-identity
       AUTHENTIK_CLIENT_SECRET: ${VITE_AUTHENTIK_CLIENT_SECRET}
       AUTHENTIK_ADMIN_TOKEN:   ${AUTHENTIK_ADMIN_TOKEN}
+      ISSUER_URL:              https://api-identity.obe-if-utama.web.id
       FE_IDENTITY_URL:         https://sso.obe-if-utama.web.id
       FE_DOSEN_URL:            https://dosen.obe-if-utama.web.id
       CORS_ORIGINS:            https://prodi.obe-if-utama.web.id,https://akademik.obe-if-utama.web.id,https://dosen.obe-if-utama.web.id,https://sso.obe-if-utama.web.id

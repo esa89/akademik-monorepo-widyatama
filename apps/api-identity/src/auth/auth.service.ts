@@ -65,7 +65,7 @@ export class AuthService {
   // ─── OIDC Discovery ──────────────────────────────────────────────────────
 
   getOidcConfiguration() {
-    const issuer = 'http://localhost:3013';
+    const issuer = this.configService.get<string>('ISSUER_URL', 'http://localhost:3013');
     return {
       issuer,
       authorization_endpoint:      `${issuer}/authorize`,
