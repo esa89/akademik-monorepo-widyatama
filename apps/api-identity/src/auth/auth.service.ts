@@ -165,25 +165,41 @@ export class AuthService {
     // - any other stage   → flow has more steps but password accepted
     this.logger.log(`Credentials validated for "${username}" (next stage: ${step3.data?.component})`);
 
-    // ── Fetch user info via admin API ───────────────────────────────────
-    const adminToken = this.configService.get<string>('AUTHENTIK_ADMIN_TOKEN', '');
-    const baseUrl = `${this.authentikUrl}/api/v3/core/users/`;
-    const authHeader = { Authorization: `Bearer ${adminToken}` };
-
-    // Try by exact username first; Authentik allows login with email so try email fallback
-    let user: any = null;
-    const { data: byUsername } = await axios.get(
-      `${baseUrl}?username=${encodeURIComponent(username)}`,
-      { headers: authHeader },
+    // ── Fetch user info using the authenticated session cookie ──────────
+    // After the flow completes, the session is fully authenticated — /me/ returns the logged-in user
+    const meResp = await axios.get(
+      `${this.authentikUrl}/api/v3/core/users/me/`,
+      { headers: cookieHeaders, validateStatus: () => true },
     );
-    user = (byUsername.results as any[])?.[0];
 
-    if (!user) {
-      const { data: byEmail } = await axios.get(
-        `${baseUrl}?email=${encodeURIComponent(username)}`,
-        { headers: authHeader },
-      );
-      user = (byEmail.results as any[])?.[0];
+    let user: any = null;
+
+    if (meResp.status === 200 && meResp.data?.pk) {
+      user = meResp.data;
+      this.logger.log(`User info fetched via /me/ for "${username}"`);
+    } else {
+      this.logger.warn(`/me/ returned ${meResp.status}, falling back to admin API`);
+
+      // Fallback: query admin API by exact username or email
+      const adminToken = this.configService.get<string>('AUTHENTIK_ADMIN_TOKEN', '');
+      if (adminToken) {
+        const usersBase = `${this.authentikUrl}/api/v3/core/users/`;
+        const adminHeader = { Authorization: `Bearer ${adminToken}` };
+
+        const { data: byUsername, status: s1 } = await axios.get(
+          `${usersBase}?username=${encodeURIComponent(username)}`,
+          { headers: adminHeader, validateStatus: () => true },
+        );
+        user = s1 === 200 ? (byUsername.results as any[])?.[0] : null;
+
+        if (!user) {
+          const { data: byEmail, status: s2 } = await axios.get(
+            `${usersBase}?email=${encodeURIComponent(username)}`,
+            { headers: adminHeader, validateStatus: () => true },
+          );
+          user = s2 === 200 ? (byEmail.results as any[])?.[0] : null;
+        }
+      }
     }
 
     if (!user) throw new InternalServerErrorException('User validated but not found in Authentik');
