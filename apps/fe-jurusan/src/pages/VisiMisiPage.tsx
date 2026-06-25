@@ -588,10 +588,6 @@ export default function VisiMisiPage() {
             <div className={`p-4 rounded-xl border ${detailItem.type === 'VISI' ? 'bg-yellow-50 border-yellow-100' : 'bg-orange-50 border-orange-100'}`}>
               <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{detailItem.content}</p>
             </div>
-            <div className="text-xs text-gray-400 flex gap-4 border-t pt-3">
-              <span>Dibuat: {new Date(detailItem.createdAt).toLocaleString('id-ID')}</span>
-              <span>Diperbarui: {new Date(detailItem.updatedAt).toLocaleString('id-ID')}</span>
-            </div>
           </div>
         ) : (
           <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Memuat...</div>

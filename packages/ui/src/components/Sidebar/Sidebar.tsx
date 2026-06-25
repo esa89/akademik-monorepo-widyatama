@@ -38,53 +38,51 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onFooterClick,
 }) => {
   return (
-    <aside className="h-screen w-60 bg-[#373B85] text-white flex flex-col justify-between">
-      {/* HEADER */}
-      <div>
-        <div className="h-16 flex items-center gap-2 text-xl font-bold border-b border-white/20 px-4">
-          {titleIcon &&
-            React.isValidElement(titleIcon) &&
-            React.cloneElement(titleIcon, { size: iconSize + 2 })}
-          <span>{title}</span>
-        </div>
-
-        {/* MENU */}
-        <nav className="mt-4 px-4 flex flex-col gap-6 text-sm">
-          {menu.map((section) => (
-            <div key={section.group}>
-              <p className="uppercase text-xs text-white/60 mb-2 tracking-wide">
-                {section.group}
-              </p>
-              <ul className="flex flex-col gap-1">
-                {section.items.map((item) => {
-                  const isActive = item.key === activeKey;
-                  return (
-                    <li
-                      key={item.key}
-                      onClick={() => onMenuClick?.(item.key)}
-                      className={clsx(
-                        "flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition",
-                        isActive
-                          ? "bg-[#F79009] text-white"
-                          : "hover:bg-white/10 text-white/80"
-                      )}
-                    >
-                      {item.icon &&
-                        React.isValidElement(item.icon) &&
-                        React.cloneElement(item.icon, { size: iconSize })}
-                      <span>{item.label}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
-        </nav>
+    <aside className="h-screen w-60 bg-[#373B85] text-white flex flex-col overflow-hidden">
+      {/* HEADER — fixed at top */}
+      <div className="h-16 shrink-0 flex items-center gap-2 text-xl font-bold border-b border-white/20 px-4">
+        {titleIcon &&
+          React.isValidElement(titleIcon) &&
+          React.cloneElement(titleIcon, { size: iconSize + 2 })}
+        <span className="truncate">{title}</span>
       </div>
 
-      {/* FOOTER */}
+      {/* MENU — scrollable when content overflows */}
+      <nav className="flex-1 overflow-y-auto scrollbar-hide px-4 py-4 flex flex-col gap-6 text-sm">
+        {menu.map((section) => (
+          <div key={section.group}>
+            <p className="uppercase text-xs text-white/60 mb-2 tracking-wide">
+              {section.group}
+            </p>
+            <ul className="flex flex-col gap-1">
+              {section.items.map((item) => {
+                const isActive = item.key === activeKey;
+                return (
+                  <li
+                    key={item.key}
+                    onClick={() => onMenuClick?.(item.key)}
+                    className={clsx(
+                      "flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition",
+                      isActive
+                        ? "bg-[#F79009] text-white"
+                        : "hover:bg-white/10 text-white/80"
+                    )}
+                  >
+                    {item.icon &&
+                      React.isValidElement(item.icon) &&
+                      React.cloneElement(item.icon, { size: iconSize })}
+                    <span>{item.label}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </nav>
+
+      {/* FOOTER — fixed at bottom */}
       {showFooter && (
-        <div className="p-4 border-t border-white/20">
+        <div className="shrink-0 p-4 border-t border-white/20">
           <button
             className="flex items-center gap-2 text-white/80 hover:text-white text-sm"
             onClick={onFooterClick}

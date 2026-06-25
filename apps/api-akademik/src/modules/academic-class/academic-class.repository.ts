@@ -341,10 +341,11 @@ export class AcademicClassRepository {
     return this.prisma.academicClass.delete({ where: { id } });
   }
 
-  async existsByCode(semesterId: string, code: string, excludeId?: string): Promise<boolean> {
+  async existsByCode(semesterId: string, courseId: string, code: string, excludeId?: string): Promise<boolean> {
     const count = await this.prisma.academicClass.count({
       where: {
         semesterId,
+        courseId,
         code,
         ...(excludeId ? { id: { not: excludeId } } : {}),
       },

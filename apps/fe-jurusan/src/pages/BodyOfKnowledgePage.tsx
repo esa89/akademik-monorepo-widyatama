@@ -351,12 +351,6 @@ export default function BodyOfKnowledgePage() {
       ),
     },
     {
-      key: 'createdAt', title: 'Dibuat',
-      render: (row) => (
-        <span className="text-xs text-gray-400">{new Date(row.createdAt).toLocaleDateString('id-ID')}</span>
-      ),
-    },
-    {
       key: 'id', title: 'Aksi',
       render: (row) => (
         <div className="flex items-center gap-1">

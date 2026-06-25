@@ -775,10 +775,6 @@ export default function SubCpmkPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3 text-xs text-gray-400">
-                <div><span className="font-medium">Dibuat:</span> {new Date(detailItem.createdAt).toLocaleDateString('id-ID')}</div>
-                <div><span className="font-medium">Diperbarui:</span> {new Date(detailItem.updatedAt).toLocaleDateString('id-ID')}</div>
-              </div>
             </div>
           );
         })()}

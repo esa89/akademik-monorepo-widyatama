@@ -283,14 +283,6 @@ export default function KomponenPenilaianPage() {
       ),
     },
     {
-      key: 'createdAt', title: 'Dibuat Pada', sortable: true,
-      render: (item) => (
-        <span className="text-xs text-gray-500">
-          {new Date(item.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
-        </span>
-      ),
-    },
-    {
       key: 'id', title: 'Aksi',
       render: (item) => (
         <div className="flex items-center gap-1">

@@ -7,7 +7,7 @@ import {
 import {
   Users, GraduationCap, AlertTriangle, CheckCircle2,
   TrendingUp, Target, BookOpen, Layers, ClipboardCheck,
-  ChevronDown, ChevronRight, User, Search, X,
+  ChevronDown, ChevronRight, User, Search, X, SlidersHorizontal, RotateCcw,
 } from 'lucide-react';
 import { useUser } from '@widyatama/sso-react';
 import { useQuery, useQueries } from '@tanstack/react-query';
@@ -45,6 +45,20 @@ const CATEGORY_COLOR: Record<string, { chip: string; radar: string }> = {
   PENGETAHUAN:         { chip: 'bg-purple-100 text-purple-700', radar: '#8b5cf6' },
   KETERAMPILAN_UMUM:   { chip: 'bg-teal-100 text-teal-700',    radar: '#14b8a6' },
   KETERAMPILAN_KHUSUS: { chip: 'bg-orange-100 text-orange-700', radar: '#f59e0b' },
+};
+
+const CATEGORY_LABEL: Record<string, string> = {
+  SIKAP:               'Sikap',
+  PENGETAHUAN:         'Pengetahuan',
+  KETERAMPILAN_UMUM:   'Keterampilan Umum',
+  KETERAMPILAN_KHUSUS: 'Keterampilan Khusus',
+};
+
+const DEFAULT_THRESHOLDS: Record<string, number> = {
+  SIKAP: 80,
+  PENGETAHUAN: 70,
+  KETERAMPILAN_UMUM: 75,
+  KETERAMPILAN_KHUSUS: 75,
 };
 
 function nimToAngkatan(nim: string) {
@@ -171,7 +185,7 @@ function MultiSelectChip<T extends string | number>({
 }
 
 // ─── CPL Bar Tooltip ──────────────────────────────────────────────────────────
-function CplTooltip({ active, payload }: { active?: boolean; payload?: { payload: RealCplStat }[] }) {
+function CplTooltip({ active, payload }: { active?: boolean; payload?: { payload: RealCplStat & { threshold: number } }[] }) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   return (
@@ -179,7 +193,7 @@ function CplTooltip({ active, payload }: { active?: boolean; payload?: { payload
       <p className="font-bold text-gray-800 mb-1">{d.code}</p>
       <p className="text-gray-500 mb-2 leading-tight line-clamp-3">{d.name}</p>
       <p className={`font-bold ${pctColor(d.pct).text}`}>Rata-rata capaian: {d.pct}%</p>
-      <p className="text-gray-400 mt-0.5">{d.met}/{d.total} mhs terpenuhi (≥60)</p>
+      <p className="text-gray-400 mt-0.5">{d.met}/{d.total} mhs terpenuhi (≥{d.threshold}%)</p>
     </div>
   );
 }
@@ -498,6 +512,8 @@ export default function DashboardPage() {
   const [selectedAngkatan, setSelectedAngkatan] = useState<number[]>([]);
   const [expandedCpl, setExpandedCpl]           = useState<string | null>(null);
   const [heatmapPage, setHeatmapPage]           = useState(0);
+  const [thresholds, setThresholds]             = useState<Record<string, number>>(DEFAULT_THRESHOLDS);
+  const [showThresholds, setShowThresholds]     = useState(false);
   const PAGE_SIZE = 15;
 
   // ── API queries ───────────────────────────────────────────────────────────
@@ -539,7 +555,10 @@ export default function DashboardPage() {
 
   // ── Derived CPL/CPMK data ─────────────────────────────────────────────────
   // Use full CPL list (has category) rather than matrix CPLs (no category)
-  const realCpls    = useMemo(() => (cplListData?.data ?? []) as RealCpl[], [cplListData]);
+  const realCpls    = useMemo(() =>
+    ([...(cplListData?.data ?? [])] as RealCpl[]).sort((a, b) =>
+      a.code.localeCompare(b.code, undefined, { numeric: true })
+    ), [cplListData]);
   const realCpmks   = useMemo(() => cpmkCplMatrix?.data?.cpmks    ?? [], [cpmkCplMatrix]);
   const rawMappings = useMemo(() => cpmkCplMatrix?.data?.mappings ?? [], [cpmkCplMatrix]);
 
@@ -596,8 +615,8 @@ export default function DashboardPage() {
           totalWithData++;
           const avg = scored.reduce((s, id) => s + cpmkAvg.get(id)!, 0) / scored.length;
           cplAvgPct[cpl.code] = Math.round(avg);
-          // Only check CPMKs that have been assessed; ignore unscored ones from other courses
-          const allPass = scored.every((id) => cpmkAvg.get(id)! >= 60);
+          const threshold = thresholds[cpl.category] ?? 60;
+          const allPass = scored.every((id) => cpmkAvg.get(id)! >= threshold);
           cplMap[cpl.code] = allPass ? 'met' : 'not_met';
           if (allPass) metCount++;
         }
@@ -605,7 +624,7 @@ export default function DashboardPage() {
 
       return { student, angkatan: nimToAngkatan(student.nim), cplMap, cplAvgPct, metCount, totalWithData };
     }).sort((a, b) => b.metCount - a.metCount);
-  }, [realCpls, cplToCpmkIds, classDetailResults, classScoreResults]);
+  }, [realCpls, cplToCpmkIds, classDetailResults, classScoreResults, thresholds]);
 
   // ── CPL aggregate stats ───────────────────────────────────────────────────
   const cplStats = useMemo((): RealCplStat[] =>
@@ -639,7 +658,7 @@ export default function DashboardPage() {
   }, [cplStats]);
 
   // ── Chart data ────────────────────────────────────────────────────────────
-  const barData = cplStats.map((s) => ({ ...s, label: s.code, fill: pctColor(s.pct).bar }));
+  const barData = cplStats.map((s) => ({ ...s, label: s.code, fill: pctColor(s.pct).bar, threshold: thresholds[s.category] ?? 60 }));
 
   const radarData = useMemo(() => {
     const groups: Record<string, number[]> = {};
@@ -749,17 +768,64 @@ export default function DashboardPage() {
               <Target size={18} className="text-primary shrink-0" />
               <div>
                 <h2 className="text-base font-bold text-gray-800">Pencapaian CPL Mahasiswa</h2>
-                <p className="text-xs text-gray-400">Berdasarkan nilai CPMK nyata · threshold kelulusan ≥ 60</p>
+                <p className="text-xs text-gray-400">
+                  Threshold: Sikap {thresholds.SIKAP}% · Pengetahuan {thresholds.PENGETAHUAN}% · KU {thresholds.KETERAMPILAN_UMUM}% · KK {thresholds.KETERAMPILAN_KHUSUS}%
+                </p>
               </div>
             </div>
-            {angkatanOptions.length > 0 && (
-              <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-[11px] text-gray-400 font-medium">Angkatan</span>
-                <MultiSelectChip options={angkatanOptions} value={selectedAngkatan}
-                  onChange={(v) => { setSelectedAngkatan(v); setHeatmapPage(0); }} placeholder="Semua Angkatan" />
-              </div>
-            )}
+            <div className="flex items-center gap-2 shrink-0">
+              {angkatanOptions.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-gray-400 font-medium">Angkatan</span>
+                  <MultiSelectChip options={angkatanOptions} value={selectedAngkatan}
+                    onChange={(v) => { setSelectedAngkatan(v); setHeatmapPage(0); }} placeholder="Semua Angkatan" />
+                </div>
+              )}
+              <button
+                onClick={() => setShowThresholds((p) => !p)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${showThresholds ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-200 hover:border-primary hover:text-primary'}`}
+              >
+                <SlidersHorizontal size={13} />
+                Threshold
+              </button>
+            </div>
           </div>
+
+          {/* Threshold settings panel */}
+          {showThresholds && (
+            <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Atur Threshold Kelulusan CPL</p>
+                <button
+                  onClick={() => setThresholds(DEFAULT_THRESHOLDS)}
+                  className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-primary transition-colors"
+                >
+                  <RotateCcw size={11} /> Reset default
+                </button>
+              </div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {Object.entries(CATEGORY_LABEL).map(([key, label]) => (
+                  <div key={key} className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-full ${CATEGORY_COLOR[key]?.chip ?? 'bg-gray-100 text-gray-600'}`}>
+                        {label}
+                      </label>
+                      <span className="text-sm font-bold text-gray-800">{thresholds[key]}%</span>
+                    </div>
+                    <input
+                      type="range" min={50} max={100} step={5}
+                      value={thresholds[key]}
+                      onChange={(e) => setThresholds((prev) => ({ ...prev, [key]: Number(e.target.value) }))}
+                      className="w-full h-1.5 rounded-full accent-primary cursor-pointer"
+                    />
+                    <div className="flex justify-between text-[10px] text-gray-400">
+                      <span>50%</span><span>100%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Summary tiles */}

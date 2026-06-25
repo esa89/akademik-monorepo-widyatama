@@ -148,12 +148,6 @@ export default function FacultyPage() {
             render: (item) => <StatusBadge active={item.isActive} />,
           },
           {
-            key: 'createdAt',
-            title: 'Dibuat',
-            sortable: true,
-            render: (item) => new Date(item.createdAt).toLocaleDateString('id-ID'),
-          },
-          {
             key: 'id',
             title: 'Aksi',
             render: (item) => (

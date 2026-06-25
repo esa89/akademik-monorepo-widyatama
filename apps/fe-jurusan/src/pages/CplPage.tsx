@@ -592,9 +592,6 @@ export default function CplPage() {
                 <p className="text-sm text-gray-700">{detailItem.description}</p>
               </div>
             )}
-            <div className="text-xs text-gray-400 flex gap-4 border-t pt-3">
-              <span>Dibuat: {new Date(detailItem.createdAt).toLocaleString('id-ID')}</span>
-            </div>
           </div>
         ) : (
           <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Memuat...</div>

@@ -42,10 +42,10 @@ export class AcademicClassService {
       throw new BadRequestException(`Course with id '${data.courseId}' not found`);
     }
 
-    // Check code uniqueness within semester
-    const codeExists = await this.repository.existsByCode(data.semesterId, data.code);
+    // Check code uniqueness within semester + course
+    const codeExists = await this.repository.existsByCode(data.semesterId, data.courseId, data.code);
     if (codeExists) {
-      throw new ConflictException(`AcademicClass with code '${data.code}' already exists in this semester`);
+      throw new ConflictException(`AcademicClass with code '${data.code}' already exists for this course in this semester`);
     }
 
     // Validate all lecturers exist
@@ -101,13 +101,14 @@ export class AcademicClassService {
       }
     }
 
-    // Check code uniqueness within semester if changing
+    // Check code uniqueness within semester + course if changing
     const effectiveSemesterId = data.semesterId ?? existing.semesterId;
+    const effectiveCourseId   = data.courseId   ?? existing.courseId;
     if (data.code && data.code !== existing.code) {
-      const codeExists = await this.repository.existsByCode(effectiveSemesterId, data.code, id);
+      const codeExists = await this.repository.existsByCode(effectiveSemesterId, effectiveCourseId, data.code, id);
       if (codeExists) {
         throw new ConflictException(
-          `AcademicClass with code '${data.code}' already exists in this semester`,
+          `AcademicClass with code '${data.code}' already exists for this course in this semester`,
         );
       }
     }

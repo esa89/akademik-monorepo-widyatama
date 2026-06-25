@@ -672,10 +672,6 @@ export default function ProfilLulusanPage() {
               </div>
             )}
 
-            <div className="flex items-start gap-3 py-2 border-t border-gray-50 pt-4">
-              <span className="text-xs font-medium text-gray-400 w-28 shrink-0">Dibuat</span>
-              <span className="text-xs text-gray-600">{new Date(detailItem.createdAt).toLocaleString('id-ID')}</span>
-            </div>
           </div>
         ) : (
           <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Memuat...</div>

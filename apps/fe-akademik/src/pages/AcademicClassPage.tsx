@@ -501,14 +501,6 @@ export default function AcademicClassPage() {
       render: (row) => <StatusBadge active={row.isActive} />,
     },
     {
-      key: 'createdAt', title: 'Dibuat', sortable: true,
-      render: (row) => (
-        <span className="text-xs text-gray-400">
-          {new Date(row.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
-        </span>
-      ),
-    },
-    {
       key: 'id', title: 'Aksi',
       render: (row) => (
         <div className="flex items-center gap-1">

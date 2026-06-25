@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Save, AlertCircle, CheckCircle2, Info, LayoutList, Shuffle, Download, ClipboardList, Copy, Check } from "lucide-react";
+import { ArrowLeft, Save, AlertCircle, CheckCircle2, Info, LayoutList, Download, ClipboardList, Copy, Check } from "lucide-react";
 import { academicClassService, courseService } from "@/services/academic.service";
 import { courseCpmkWeightService, studentCpmkScoreService, cplCpmkMappingService } from "@/services/obe.service";
 import type { ClassStudent, CourseCpmkWeight, StudentCpmkScore, ScoreEntry, CplInfo } from "@/types";
@@ -252,23 +252,6 @@ export default function InputNilaiCpmkPage() {
   const conversionComponents = useMemo(() => buildConversionComponents(cpmkGroups), [cpmkGroups]);
   const students: ClassStudent[] = cls?.students ?? [];
 
-  // ── Fill random scores (testing utility) ─────────────────
-  const fillRandom = useCallback(() => {
-    const newScores: Record<string, number> = {};
-    for (const s of students) {
-      for (const g of cpmkGroups) {
-        for (const c of g.components) {
-          const r = Math.random();
-          let val: number;
-          if (r < 0.10) val = Math.floor(Math.random() * 15) + 40;
-          else if (r < 0.30) val = Math.floor(Math.random() * 15) + 55;
-          else val = Math.floor(Math.random() * 26) + 70;
-          newScores[sKey(s.student.id, g.cpmkId, c.componentId)] = val;
-        }
-      }
-    }
-    setScores(newScores);
-  }, [students, cpmkGroups]);
 
   // ── Save ─────────────────────────────────────────────────
   const saveMutation = useMutation({
@@ -435,14 +418,6 @@ export default function InputNilaiCpmkPage() {
               <CheckCircle2 className="w-4 h-4" /> Tersimpan
             </span>
           )}
-          <button
-            onClick={fillRandom}
-            title="Isi semua nilai secara random (untuk testing)"
-            className="flex items-center gap-2 border border-gray-200 hover:bg-gray-50 text-gray-600 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
-          >
-            <Shuffle className="w-4 h-4" />
-            Isi Random
-          </button>
           <button
             onClick={() => saveMutation.mutate()}
             disabled={saveMutation.isPending}

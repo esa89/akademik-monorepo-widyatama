@@ -682,9 +682,6 @@ export default function CpmkPage() {
               </div>
             )}
 
-            <div className="text-xs text-gray-400 border-t pt-3">
-              Dibuat: {new Date(detailItem.createdAt).toLocaleString('id-ID')}
-            </div>
           </div>
         ) : (
           <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Data tidak ditemukan</div>

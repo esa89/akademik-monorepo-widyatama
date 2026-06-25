@@ -94,7 +94,9 @@ export function AuthProvider({
   };
 
   const logout = async () => {
-    await userManager.signoutRedirect();
+    await userManager.signoutRedirect({
+      post_logout_redirect_uri: window.location.origin,
+    });
   };
 
   const getAccessToken = () => {
