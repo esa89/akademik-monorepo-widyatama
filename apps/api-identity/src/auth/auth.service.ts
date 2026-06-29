@@ -182,23 +182,25 @@ export class AuthService {
 
       // Fallback: query admin API by exact username or email
       const adminToken = this.configService.get<string>('AUTHENTIK_ADMIN_TOKEN', '');
-      if (adminToken) {
-        const usersBase = `${this.authentikUrl}/api/v3/core/users/`;
-        const adminHeader = { Authorization: `Bearer ${adminToken}` };
+      this.logger.warn(`Admin token present: ${!!adminToken}`);
 
-        const { data: byUsername, status: s1 } = await axios.get(
-          `${usersBase}?username=${encodeURIComponent(username)}`,
+      const usersBase = `${this.authentikUrl}/api/v3/core/users/`;
+      const adminHeader = { Authorization: `Bearer ${adminToken}` };
+
+      const { data: byUsername, status: s1 } = await axios.get(
+        `${usersBase}?username=${encodeURIComponent(username)}`,
+        { headers: adminHeader, validateStatus: () => true },
+      );
+      this.logger.warn(`Admin API ?username= : status=${s1}, count=${byUsername?.count}`);
+      user = s1 === 200 ? (byUsername.results as any[])?.[0] : null;
+
+      if (!user) {
+        const { data: byEmail, status: s2 } = await axios.get(
+          `${usersBase}?email=${encodeURIComponent(username)}`,
           { headers: adminHeader, validateStatus: () => true },
         );
-        user = s1 === 200 ? (byUsername.results as any[])?.[0] : null;
-
-        if (!user) {
-          const { data: byEmail, status: s2 } = await axios.get(
-            `${usersBase}?email=${encodeURIComponent(username)}`,
-            { headers: adminHeader, validateStatus: () => true },
-          );
-          user = s2 === 200 ? (byEmail.results as any[])?.[0] : null;
-        }
+        this.logger.warn(`Admin API ?email= : status=${s2}, count=${byEmail?.count}`);
+        user = s2 === 200 ? (byEmail.results as any[])?.[0] : null;
       }
     }
 

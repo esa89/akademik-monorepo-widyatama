@@ -2,11 +2,11 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import {
   Search, BookOpen, Target, Layers, ChevronDown,
-  GraduationCap, BookOpenCheck, ClipboardCheck, X,
+  GraduationCap, BookOpenCheck, ClipboardCheck, X, Users,
 } from 'lucide-react';
 import {
   courseService, courseCpmkWeightService, subCpmkService,
-  cplService, cpmkService,
+  cplService, cpmkService, academicClassService, studentCpmkScoreService,
 } from '@/services/obe.service';
 import { useApp } from '@/contexts/AppContext';
 import type { Cpl, SubCpmk } from '@/types';
@@ -187,6 +187,7 @@ export default function TrackingMatakuliahPage() {
   const [search, setSearch] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [expandedCpls, setExpandedCpls] = useState<Set<string>>(new Set());
+  const [scoreAngkatan, setScoreAngkatan] = useState<number | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const prevCourseIdRef = useRef<string | null>(null);
 
@@ -358,6 +359,93 @@ export default function TrackingMatakuliahPage() {
 
   const hasNoData = !!selectedCourseId && !isLoadingDetail && !weightsFetching && weights.length === 0;
 
+  // ── Student score queries ─────────────────────────────────────────────────
+
+  const { data: classesData, isFetching: classesFetching } = useQuery({
+    queryKey: ['classes-for-course-tracking', selectedCourseId],
+    queryFn: () => academicClassService.getAll({ courseId: selectedCourseId!, limit: 100 }),
+    enabled: !!selectedCourseId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const courseClasses = useMemo(() => classesData?.data ?? [], [classesData]);
+
+  const classScoreResults = useQueries({
+    queries: courseClasses.map((cls) => ({
+      queryKey: ['class-scores-tracking', cls.id],
+      queryFn: () => studentCpmkScoreService.getByClass(cls.id),
+      staleTime: 5 * 60 * 1000,
+    })),
+  });
+
+  const classDetailResults = useQueries({
+    queries: courseClasses.map((cls) => ({
+      queryKey: ['class-detail-tracking', cls.id],
+      queryFn: () => academicClassService.getById(cls.id),
+      staleTime: 5 * 60 * 1000,
+    })),
+  });
+
+  const studentInfoMap = useMemo(() => {
+    const map = new Map<string, { nim: string; name: string; entryYear: number }>();
+    classDetailResults.forEach((q) => {
+      (q.data?.data?.students ?? []).forEach(({ student }) => {
+        map.set(student.id, { nim: student.nim, name: student.name, entryYear: student.entryYear });
+      });
+    });
+    return map;
+  }, [classDetailResults]);
+
+  const studentCpmkAvgScores = useMemo(() => {
+    const raw = new Map<string, Map<string, number[]>>();
+    classScoreResults.forEach((q) => {
+      (q.data?.data ?? []).forEach((s) => {
+        if (!raw.has(s.studentId)) raw.set(s.studentId, new Map());
+        const m = raw.get(s.studentId)!;
+        if (!m.has(s.cpmkId)) m.set(s.cpmkId, []);
+        m.get(s.cpmkId)!.push(s.score);
+      });
+    });
+    const result = new Map<string, Map<string, number>>();
+    for (const [sid, cpmkMap] of raw) {
+      const avgMap = new Map<string, number>();
+      for (const [cpmkId, scores] of cpmkMap) {
+        avgMap.set(cpmkId, Math.round(scores.reduce((s, v) => s + v, 0) / scores.length));
+      }
+      result.set(sid, avgMap);
+    }
+    return result;
+  }, [classScoreResults]);
+
+  const cpmkColumns = useMemo(() =>
+    uniqueCpmkIds
+      .map((id) => {
+        const w = weights.find((ww) => ww.cpmkId === id);
+        return { id, code: w?.cpmk.code ?? '', name: w?.cpmk.name ?? '' };
+      })
+      .filter((c) => c.code)
+      .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })),
+  [uniqueCpmkIds, weights]);
+
+  const scoreAngkatanOptions = useMemo(() => {
+    const years = new Set<number>();
+    for (const info of studentInfoMap.values()) if (info.entryYear) years.add(info.entryYear);
+    return [...years].sort((a, b) => a - b);
+  }, [studentInfoMap]);
+
+  const sortedStudents = useMemo(() =>
+    [...studentInfoMap.entries()]
+      .map(([id, info]) => ({ id, ...info }))
+      .filter((s) => scoreAngkatan === null || s.entryYear === scoreAngkatan)
+      .sort((a, b) => a.nim.localeCompare(b.nim)),
+  [studentInfoMap, scoreAngkatan]);
+
+  const isScoresLoading = classesFetching ||
+    (courseClasses.length > 0 && (
+      classScoreResults.some((q) => q.isFetching) ||
+      classDetailResults.some((q) => q.isFetching)
+    ));
+
   const toggleCpl = (id: string) => {
     setExpandedCpls((prev) => {
       const next = new Set(prev);
@@ -371,12 +459,14 @@ export default function TrackingMatakuliahPage() {
     setDropdownOpen(false);
     setSearch('');
     setExpandedCpls(new Set());
+    setScoreAngkatan(null);
     prevCourseIdRef.current = null;
   };
 
   const clearSelection = () => {
     setSelectedCourseId(null);
     setExpandedCpls(new Set());
+    setScoreAngkatan(null);
     prevCourseIdRef.current = null;
   };
 
@@ -569,6 +659,93 @@ export default function TrackingMatakuliahPage() {
               ))}
             </div>
           )}
+
+          {/* Nilai Mahasiswa per CPMK */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2 min-w-0">
+                <Users size={17} className="text-primary shrink-0" />
+                <div>
+                  <h3 className="text-sm font-bold text-gray-800">Nilai Mahasiswa per CPMK</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {sortedStudents.length} mahasiswa · {cpmkColumns.length} CPMK
+                  </p>
+                </div>
+              </div>
+              {scoreAngkatanOptions.length > 0 && (
+                <select
+                  value={scoreAngkatan ?? ''}
+                  onChange={(e) => setScoreAngkatan(e.target.value === '' ? null : Number(e.target.value))}
+                  className="shrink-0 text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <option value="">Semua Angkatan</option>
+                  {scoreAngkatanOptions.map((y) => (
+                    <option key={y} value={y}>Angkatan {y}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {isScoresLoading ? (
+              <div className="p-12 text-center">
+                <div className="animate-spin w-5 h-5 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2" />
+                <p className="text-xs text-gray-400">Memuat nilai mahasiswa...</p>
+              </div>
+            ) : sortedStudents.length === 0 ? (
+              <div className="p-12 text-center">
+                <Users size={32} className="text-gray-200 mx-auto mb-2" />
+                <p className="text-xs text-gray-400">Belum ada data nilai mahasiswa untuk mata kuliah ini</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      <th className="text-left px-4 py-3 text-gray-500 font-semibold whitespace-nowrap w-8">#</th>
+                      <th className="text-left px-4 py-3 text-gray-500 font-semibold whitespace-nowrap">NIM</th>
+                      <th className="text-left px-4 py-3 text-gray-500 font-semibold whitespace-nowrap min-w-[180px]">Nama</th>
+                      <th className="text-center px-3 py-3 text-gray-500 font-semibold whitespace-nowrap">Angkatan</th>
+                      {cpmkColumns.map((cpmk) => (
+                        <th key={cpmk.id} title={cpmk.name}
+                          className="text-center px-3 py-3 text-gray-500 font-semibold whitespace-nowrap min-w-[80px]">
+                          <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-bold">{cpmk.code}</span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedStudents.map((student, i) => {
+                      const scores = studentCpmkAvgScores.get(student.id);
+                      return (
+                        <tr key={student.id} className={`border-b border-gray-50 hover:bg-blue-50/30 transition-colors ${i % 2 === 1 ? 'bg-gray-50/40' : ''}`}>
+                          <td className="px-4 py-2.5 text-gray-400">{i + 1}</td>
+                          <td className="px-4 py-2.5 font-mono font-bold text-gray-700 whitespace-nowrap">{student.nim}</td>
+                          <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{student.name}</td>
+                          <td className="px-3 py-2.5 text-center text-gray-400">{student.entryYear}</td>
+                          {cpmkColumns.map((cpmk) => {
+                            const score = scores?.get(cpmk.id);
+                            if (score === undefined) {
+                              return <td key={cpmk.id} className="px-3 py-2.5 text-center text-gray-300">–</td>;
+                            }
+                            const cls = score >= 75
+                              ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                              : score >= 50
+                              ? 'text-yellow-700 bg-yellow-50 border-yellow-200'
+                              : 'text-red-600 bg-red-50 border-red-200';
+                            return (
+                              <td key={cpmk.id} className="px-3 py-2.5 text-center">
+                                <span className={`inline-block px-2 py-0.5 rounded-md font-bold border ${cls}`}>{score}</span>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
 
           {/* CPL → CPMK → Sub-CPMK hierarchy */}
           {!isLoadingDetail && cplGroups.length > 0 && (

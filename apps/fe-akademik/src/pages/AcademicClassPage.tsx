@@ -64,21 +64,39 @@ function gradeBadgeClass(grade: string | null | undefined) {
 }
 
 // ─── OBE score seeding ────────────────────────────────────────────────────────
-// Nilai akhir langsung di-assign ke semua komponen CPMK.
-// Karena Σ(nilaiAkhir * weight_i / 100) = nilaiAkhir × (Σweight / 100) = nilaiAkhir
-// ketika total bobot = 100%, nilai akhir yang dihasilkan akan sama persis.
+// Tiap komponen mendapat variasi random ±maxVariation poin dari nilaiAkhir.
+// Deviasi di-center berdasarkan bobot sehingga weighted average tetap ≈ nilaiAkhir.
 
 function seedScoresFromFinal(
   studentId: string,
   nilaiAkhir: number,
   entries: { cpmkId: string; assessmentComponentId: string; weight: number }[],
 ): { studentId: string; cpmkId: string; assessmentComponentId: string; score: number }[] {
-  const score = Math.max(0, Math.min(100, Math.round(nilaiAkhir)));
-  return entries.map((e) => ({
+  if (entries.length === 0) return [];
+
+  const target      = Math.max(0, Math.min(100, nilaiAkhir));
+  const totalWeight = entries.reduce((s, e) => s + e.weight, 0) || 100;
+
+  if (entries.length === 1) {
+    return [{ studentId, cpmkId: entries[0].cpmkId, assessmentComponentId: entries[0].assessmentComponentId, score: Math.round(target) }];
+  }
+
+  // Batasi variasi agar tidak melampaui [0, 100]
+  const maxVar = Math.min(18, target * 0.28, (100 - target) * 0.28);
+
+  // Deviasi random per komponen
+  const deviations = entries.map(() => (Math.random() - 0.5) * 2 * maxVar);
+
+  // Hitung weighted mean dari deviasi lalu kurangi dari tiap deviasi
+  // → weighted sum deviasi = 0, sehingga weighted avg skor ≈ target
+  const weightedMean = deviations.reduce((s, d, i) => s + d * entries[i].weight, 0) / totalWeight;
+  const centered     = deviations.map((d) => d - weightedMean);
+
+  return entries.map((e, i) => ({
     studentId,
     cpmkId: e.cpmkId,
     assessmentComponentId: e.assessmentComponentId,
-    score,
+    score: Math.max(0, Math.min(100, Math.round(target + centered[i]))),
   }));
 }
 

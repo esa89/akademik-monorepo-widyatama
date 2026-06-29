@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
-import { BarChart2, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { BarChart2, AlertTriangle, CheckCircle2, SlidersHorizontal } from 'lucide-react';
 import {
   academicClassService,
   studentCpmkScoreService,
@@ -32,6 +32,7 @@ function scoreToGrade(score: number): GradeKey {
   return 'E';
 }
 
+
 type CourseDist = {
   courseId:   string;
   courseName: string;
@@ -62,9 +63,39 @@ function cellCls(count: number, max: number, pass: boolean): string {
   }
 }
 
+// ── Checkbox helper ───────────────────────────────────────────────────────────
+function Checkbox({ checked, onChange, label, accent }: {
+  checked: boolean; onChange: () => void; label: string; accent?: string;
+}) {
+  return (
+    <label className="flex items-center gap-1.5 cursor-pointer select-none group">
+      <div
+        className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+          checked
+            ? (accent ?? 'bg-primary border-primary')
+            : 'border-gray-300 bg-white group-hover:border-primary'
+        }`}
+        onClick={onChange}
+      >
+        {checked && (
+          <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 10">
+            <path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </div>
+      <span className="text-xs text-gray-700">{label}</span>
+    </label>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 export default function DistribusiNilaiPage() {
-  // All academic classes
+  // ── Filter state ──────────────────────────────────────────────────────────
+  const [semesterFilter, setSemesterFilter] = useState('');
+  const [gradeFilter, setGradeFilter]       = useState<Set<GradeKey>>(new Set());
+  const [angkatanFilter, setAngkatanFilter] = useState<Set<number>>(new Set());
+
+  // ── Queries ───────────────────────────────────────────────────────────────
   const { data: classesData, isLoading: classesLoading } = useQuery({
     queryKey: ['classes-distrib'],
     queryFn:  () => academicClassService.getAll({ limit: 100 }),
@@ -72,7 +103,6 @@ export default function DistribusiNilaiPage() {
   });
   const allClasses = classesData?.data ?? [];
 
-  // Unique course IDs
   const uniqueCourseIds = useMemo(
     () => [...new Set(allClasses.map((c) => c.course.id))],
     [allClasses],
@@ -87,6 +117,15 @@ export default function DistribusiNilaiPage() {
     })),
   });
 
+  // Class details (for student NIM → angkatan)
+  const classDetailResults = useQueries({
+    queries: allClasses.map((cls) => ({
+      queryKey: ['class-detail-distrib', cls.id],
+      queryFn:  () => academicClassService.getById(cls.id),
+      staleTime: 10 * 60 * 1000,
+    })),
+  });
+
   // Weights per unique course
   const courseWeightResults = useQueries({
     queries: uniqueCourseIds.map((courseId) => ({
@@ -96,7 +135,9 @@ export default function DistribusiNilaiPage() {
     })),
   });
 
-  // courseId → weight lookup: `${cpmkId}:${compId}` → weight
+  // ── Derived maps ──────────────────────────────────────────────────────────
+
+  // courseId → weight lookup
   const courseWeightMap = useMemo(() => {
     const map = new Map<string, Map<string, number>>();
     uniqueCourseIds.forEach((courseId, i) => {
@@ -110,19 +151,44 @@ export default function DistribusiNilaiPage() {
     return map;
   }, [uniqueCourseIds, courseWeightResults]);
 
-  // Compute grade distribution per course
+  // studentId → angkatan year (e.g. 2024) — from entryYear field
+  const studentAngkatanMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const r of classDetailResults) {
+      const students = r.data?.data?.students ?? [];
+      for (const { student } of students) {
+        if (!map.has(student.id) && student.entryYear) {
+          map.set(student.id, student.entryYear);
+        }
+      }
+    }
+    return map;
+  }, [classDetailResults]);
+
+  // Available filter options
+  const availableSemesters = useMemo(() => {
+    const names = [...new Set(allClasses.map((c) => c.semester?.name ?? '').filter(Boolean))];
+    return names.sort();
+  }, [allClasses]);
+
+  const availableAngkatan = [2024, 2025];
+
+  // ── Grade distribution computation ───────────────────────────────────────
   const courseDistributions = useMemo((): CourseDist[] => {
     if (allClasses.length === 0) return [];
 
-    // Group class indices by courseId
+    // Group class indices by courseId, filtering by semester
     const courseIndex = new Map<string, { name: string; code: string; semester: string; indices: number[] }>();
     allClasses.forEach((cls, i) => {
+      const semName = cls.semester?.name ?? '';
+      if (semesterFilter && semName !== semesterFilter) return;
+
       if (!courseIndex.has(cls.course.id)) {
         courseIndex.set(cls.course.id, {
-          name: cls.course.name,
-          code: cls.course.code,
-          semester: cls.semester?.name ?? '',
-          indices: [],
+          name:     cls.course.name,
+          code:     cls.course.code,
+          semester: semName,
+          indices:  [],
         });
       }
       courseIndex.get(cls.course.id)!.indices.push(i);
@@ -133,12 +199,17 @@ export default function DistribusiNilaiPage() {
     for (const [courseId, meta] of courseIndex) {
       const weightMap = courseWeightMap.get(courseId);
 
-      // Accumulate per student: studentId → {wsum, wTotal}
       const studentScores = new Map<string, { wsum: number; wTotal: number; rawSum: number; rawN: number }>();
 
       for (const idx of meta.indices) {
         const scores = classScoreResults[idx]?.data?.data ?? [];
         for (const s of scores) {
+          // Angkatan filter
+          if (angkatanFilter.size > 0) {
+            const year = studentAngkatanMap.get(s.studentId);
+            if (!year || !angkatanFilter.has(year)) continue;
+          }
+
           if (!studentScores.has(s.studentId)) {
             studentScores.set(s.studentId, { wsum: 0, wTotal: 0, rawSum: 0, rawN: 0 });
           }
@@ -186,9 +257,15 @@ export default function DistribusiNilaiPage() {
     }
 
     return result.sort((a, b) => (a.passRate ?? 0) - (b.passRate ?? 0));
-  }, [allClasses, courseWeightMap, classScoreResults]);
+  }, [allClasses, courseWeightMap, classScoreResults, semesterFilter, angkatanFilter, studentAngkatanMap]);
 
-  // Max count per band (for color intensity)
+  // Visible bands (grade filter)
+  const visibleBands = useMemo(
+    () => gradeFilter.size > 0 ? BANDS.filter((b) => gradeFilter.has(b.key)) : [...BANDS],
+    [gradeFilter],
+  );
+
+  // Max count per visible band (for color intensity)
   const maxPerBand = useMemo(() => {
     const m = {} as Record<GradeKey, number>;
     for (const b of BANDS) {
@@ -202,12 +279,32 @@ export default function DistribusiNilaiPage() {
     return w.length ? Math.round(w.reduce((s, c) => s + c.passRate!, 0) / w.length) : null;
   }, [courseDistributions]);
 
-  const lowestCourse = courseDistributions[0];
+  const lowestCourse    = courseDistributions[0];
+  const scoresLoading   = classScoreResults.some((r) => r.isLoading);
+  const isLoading       = classesLoading || scoresLoading;
+  const hasData         = courseDistributions.length > 0;
 
-  const scoresLoading = classScoreResults.some((r) => r.isLoading);
-  const isLoading     = classesLoading || scoresLoading;
-  const hasData       = courseDistributions.length > 0;
+  // ── Toggle helpers ────────────────────────────────────────────────────────
+  function toggleGrade(key: GradeKey) {
+    setGradeFilter((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
 
+  function toggleAngkatan(year: number) {
+    setAngkatanFilter((prev) => {
+      const next = new Set(prev);
+      next.has(year) ? next.delete(year) : next.add(year);
+      return next;
+    });
+  }
+
+  const activeFilterCount =
+    (semesterFilter ? 1 : 0) + gradeFilter.size + angkatanFilter.size;
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6 pb-4">
       {/* ── Page header ───────────────────────────────────────────── */}
@@ -216,6 +313,101 @@ export default function DistribusiNilaiPage() {
         <p className="text-sm text-gray-500 mt-0.5">
           Sebaran huruf mutu per MK · merah = tidak lulus · biru = lulus
         </p>
+      </div>
+
+      {/* ── Filter panel ──────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">
+        <div className="flex items-center gap-2 px-5 py-3.5 border-b border-gray-100">
+          <SlidersHorizontal size={14} className="text-gray-400" />
+          <span className="text-sm font-semibold text-gray-700">Filter</span>
+          {activeFilterCount > 0 && (
+            <span className="ml-1 px-2 py-0.5 bg-primary/10 text-primary text-xs font-semibold rounded-full">
+              {activeFilterCount} aktif
+            </span>
+          )}
+          {activeFilterCount > 0 && (
+            <button
+              onClick={() => {
+                setSemesterFilter('');
+                setGradeFilter(new Set());
+                setAngkatanFilter(new Set());
+              }}
+              className="ml-auto text-xs text-gray-400 hover:text-red-500 transition-colors"
+            >
+              Reset semua
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-0 divide-y md:divide-y-0 md:divide-x divide-gray-100">
+          {/* Semester */}
+          <div className="px-5 py-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Semester</p>
+            <select
+              value={semesterFilter}
+              onChange={(e) => setSemesterFilter(e.target.value)}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+            >
+              <option value="">Semua Semester</option>
+              {availableSemesters.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Nilai (grade bands) */}
+          <div className="px-5 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Nilai</p>
+              {gradeFilter.size > 0 && (
+                <button
+                  onClick={() => setGradeFilter(new Set())}
+                  className="text-[11px] text-gray-400 hover:text-primary"
+                >
+                  Tampilkan semua
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {BANDS.map((b) => (
+                <Checkbox
+                  key={b.key}
+                  checked={gradeFilter.has(b.key)}
+                  onChange={() => toggleGrade(b.key)}
+                  label={`${b.label} (${b.sub})`}
+                  accent={b.pass ? 'bg-blue-600 border-blue-600' : 'bg-red-500 border-red-500'}
+                />
+              ))}
+            </div>
+            {gradeFilter.size > 0 && (
+              <p className="text-[11px] text-gray-400 mt-2">
+                Menampilkan kolom: {[...gradeFilter].join(', ')}
+              </p>
+            )}
+          </div>
+
+          {/* Angkatan */}
+          <div className="px-5 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Angkatan</p>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {availableAngkatan.map((year) => (
+                <Checkbox
+                  key={year}
+                  checked={angkatanFilter.has(year)}
+                  onChange={() => toggleAngkatan(year)}
+                  label={`Angkatan ${year}`}
+                />
+              ))}
+            </div>
+            {angkatanFilter.size > 0 && (
+              <p className="text-[11px] text-gray-400 mt-2">
+                Filter aktif: {[...angkatanFilter].sort().join(', ')}
+              </p>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ── Alert banners ─────────────────────────────────────────── */}
@@ -237,8 +429,9 @@ export default function DistribusiNilaiPage() {
               <CheckCircle2 size={15} className="text-emerald-600 shrink-0 mt-0.5" />
               <span className="text-emerald-700">
                 Rata-rata kelulusan{' '}
-                <span className="font-semibold text-emerald-800">{avgPassRate}%</span>{' '}
-                dari seluruh mata kuliah aktif semester ini
+                <span className="font-semibold text-emerald-800">{avgPassRate}%</span>
+                {semesterFilter && <> semester <span className="font-semibold text-emerald-800">{semesterFilter}</span></>}
+                {angkatanFilter.size > 0 && <> · angkatan <span className="font-semibold text-emerald-800">{[...angkatanFilter].sort().join(', ')}</span></>}
               </span>
             </div>
           )}
@@ -250,7 +443,14 @@ export default function DistribusiNilaiPage() {
         {/* Card header + legend */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div>
-            <h2 className="text-base font-bold text-gray-800">Distribusi Nilai Mata Kuliah</h2>
+            <h2 className="text-base font-bold text-gray-800">
+              Distribusi Nilai Mata Kuliah
+              {courseDistributions.length > 0 && (
+                <span className="ml-2 text-sm font-normal text-gray-400">
+                  ({courseDistributions.length} MK)
+                </span>
+              )}
+            </h2>
             <p className="text-xs text-gray-400">Sebaran huruf mutu per MK · merah = tidak lulus · biru = lulus</p>
           </div>
           <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-400">
@@ -273,7 +473,9 @@ export default function DistribusiNilaiPage() {
             <BarChart2 size={36} className="mx-auto mb-3 text-gray-200" />
             <p className="text-sm text-gray-400">Belum ada data distribusi nilai.</p>
             <p className="text-xs text-gray-300 mt-1">
-              Pastikan data kelas, bobot CPMK, dan nilai sudah diinput.
+              {activeFilterCount > 0
+                ? 'Coba ubah atau reset filter untuk melihat lebih banyak data.'
+                : 'Pastikan data kelas, bobot CPMK, dan nilai sudah diinput.'}
             </p>
           </div>
         ) : (
@@ -284,7 +486,7 @@ export default function DistribusiNilaiPage() {
                   <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 min-w-[220px]">
                     Mata Kuliah
                   </th>
-                  {BANDS.map((b) => (
+                  {visibleBands.map((b) => (
                     <th
                       key={b.key}
                       className={`px-2 py-3 text-center text-xs font-bold min-w-[64px] ${
@@ -310,9 +512,14 @@ export default function DistribusiNilaiPage() {
                       <div className="font-medium text-gray-800 text-[13px] leading-snug">
                         {course.courseName}
                       </div>
-                      <div className="text-[11px] text-primary font-mono mt-0.5">{course.courseCode}</div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[11px] text-primary font-mono">{course.courseCode}</span>
+                        {course.semester && (
+                          <span className="text-[10px] text-gray-400">{course.semester}</span>
+                        )}
+                      </div>
                     </td>
-                    {BANDS.map((b) => {
+                    {visibleBands.map((b) => {
                       const count = course.dist[b.key] ?? 0;
                       const cls   = cellCls(count, maxPerBand[b.key], b.pass);
                       return (

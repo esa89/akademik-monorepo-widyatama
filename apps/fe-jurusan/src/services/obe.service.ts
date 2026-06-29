@@ -50,6 +50,7 @@ export const rubricService = {
 // ─── COURSES (from api-akademik) ────────────────────────────────
 export const courseService = {
   getAll: (params?: Record<string, unknown>) => akademikApi.get<PaginatedResponse<Course>>('/courses', { params }).then((r) => r.data),
+  getById: (id: string) => akademikApi.get<{ data: Course }>(`/courses/${id}`).then((r) => r.data),
 };
 
 // ─── CURRICULUM (from api-akademik) ─────────────────────────────
@@ -164,7 +165,7 @@ export const academicClassService = {
       totalStudents: number;
       course: { id: string; code: string; name: string };
       semester: { id: string; name: string; code: string };
-      students: { student: { id: string; nim: string; name: string } }[];
+      students: { student: { id: string; nim: string; name: string; entryYear: number } }[];
     }>>(`/academic-classes/${id}`).then((r) => r.data),
 };
 

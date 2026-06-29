@@ -16,6 +16,8 @@ import KomponenPenilaianPage from '@/pages/KomponenPenilaianPage';
 import BobotPenilaianPage from '@/pages/BobotPenilaianPage';
 import TrackingObePage from '@/pages/TrackingObePage';
 import TrackingMatakuliahPage from '@/pages/TrackingMatakuliahPage';
+import TrackingMahasiswaPage from '@/pages/TrackingMahasiswaPage';
+import TrackingCpmkPage from '@/pages/TrackingCpmkPage';
 import DistribusiNilaiPage from '@/pages/DistribusiNilaiPage';
 import LoginPage from '@/pages/auth/LoginPage';
 import CallbackPage from '@/pages/auth/CallbackPage';
@@ -45,6 +47,8 @@ export const router = createBrowserRouter([
       { path: 'bobot-penilaian', element: <BobotPenilaianPage /> },
       { path: 'tracking-obe', element: <TrackingObePage /> },
       { path: 'tracking-matakuliah', element: <TrackingMatakuliahPage /> },
+      { path: 'tracking-mahasiswa', element: <TrackingMahasiswaPage /> },
+      { path: 'tracking-cpmk',      element: <TrackingCpmkPage /> },
       { path: 'distribusi-nilai', element: <DistribusiNilaiPage /> },
     ],
   },

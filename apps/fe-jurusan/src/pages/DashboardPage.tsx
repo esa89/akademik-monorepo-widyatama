@@ -2,31 +2,35 @@ import { useState, useMemo, useRef, useEffect, type ReactNode } from 'react';
 import {
   BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, RadarChart, Radar, PolarGrid,
-  PolarAngleAxis, PolarRadiusAxis,
+  PolarAngleAxis,
 } from 'recharts';
 import {
   Users, GraduationCap, AlertTriangle, CheckCircle2,
   TrendingUp, Target, BookOpen, Layers, ClipboardCheck,
   ChevronDown, ChevronRight, User, Search, X, SlidersHorizontal, RotateCcw,
+  MinusCircle, HelpCircle,
 } from 'lucide-react';
 import { useUser } from '@widyatama/sso-react';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import {
   cplService, cpmkService, subCpmkService, assessmentComponentService,
-  academicClassService, cpmkCplMappingService, studentCpmkScoreService,
+  academicClassService, cpmkCplMappingService, cpmkCourseMappingService,
+  studentCpmkScoreService, courseService,
 } from '@/services/obe.service';
 import { useApp } from '@/contexts/AppContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type RealCpl    = { id: string; code: string; name: string; category: string };
 type RealCpmk   = { id: string; code: string; name: string };
-type RealStudent = { id: string; nim: string; name: string };
+type RealStudent = { id: string; nim: string; name: string; entryYear: number };
 
 type RealStudentResult = {
   student: RealStudent;
   angkatan: number;
-  cplMap:    Record<string, 'met' | 'not_met' | 'no_data'>;
+  cplMap:    Record<string, 'met' | 'partial' | 'not_met' | 'no_data'>;
   cplAvgPct: Record<string, number>;
+  cpmkScores: Record<string, number>; // cpmkId → curriculum-adjusted avg score
+  cpmkCourseScores: Record<string, Record<string, number>>; // cpmkId → courseId → per-course score
   metCount:  number;
   totalWithData: number;
 };
@@ -61,8 +65,26 @@ const DEFAULT_THRESHOLDS: Record<string, number> = {
   KETERAMPILAN_KHUSUS: 75,
 };
 
-function nimToAngkatan(nim: string) {
-  return parseInt(`20${nim.substring(0, 2)}`);
+
+type CplStatus = 'met' | 'partial' | 'not_met' | 'no_data';
+
+const STATUS_CONFIG: Record<CplStatus, { label: string; icon: typeof CheckCircle2; cls: string; bg: string }> = {
+  met:     { label: 'Terpenuhi',        icon: CheckCircle2, cls: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200' },
+  partial: { label: 'Sebagian Dinilai', icon: AlertTriangle, cls: 'text-amber-500',  bg: 'bg-amber-50 border-amber-200'    },
+  not_met: { label: 'Belum Terpenuhi',  icon: MinusCircle,  cls: 'text-red-500',     bg: 'bg-red-50 border-red-200'        },
+  no_data: { label: 'Belum Ada Nilai',  icon: HelpCircle,   cls: 'text-gray-400',    bg: 'bg-gray-50 border-gray-200'      },
+};
+
+function ExplanationStep({ step, title, children }: { step: number; title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-4">
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold">{step}</div>
+      <div className="flex-1 pb-6 border-b border-gray-100 last:border-0 last:pb-0">
+        <p className="text-sm font-bold text-gray-800 mb-1">{title}</p>
+        <div className="text-xs text-gray-500 leading-relaxed space-y-1">{children}</div>
+      </div>
+    </div>
+  );
 }
 
 // ─── TopCard ─────────────────────────────────────────────────────────────────
@@ -201,14 +223,15 @@ function CplTooltip({ active, payload }: { active?: boolean; payload?: { payload
 // ─── CplRow ───────────────────────────────────────────────────────────────────
 function CplRow({
   cpl, pct, met, total,
-  passingStudents, failingStudents, noDataStudents,
+  passingStudents, partialStudents, failingStudents, noDataStudents,
   expanded, onToggle,
 }: {
   cpl: RealCpl;
   pct: number; met: number; total: number;
-  passingStudents: RealStudentResult[];
-  failingStudents: RealStudentResult[];
-  noDataStudents:  RealStudentResult[];
+  passingStudents:  RealStudentResult[];
+  partialStudents:  RealStudentResult[];
+  failingStudents:  RealStudentResult[];
+  noDataStudents:   RealStudentResult[];
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -246,10 +269,10 @@ function CplRow({
               <p className="text-xs text-gray-400 italic">Belum ada data penilaian untuk CPL ini.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
                 <p className="text-xs font-semibold text-emerald-700 mb-2 flex items-center gap-1.5">
-                  <CheckCircle2 size={13} className="text-emerald-600" /> Terpenuhi — {passingStudents.length} mahasiswa
+                  <CheckCircle2 size={13} className="text-emerald-600" /> Terpenuhi — {passingStudents.length} mhs
                 </p>
                 <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
                   {passingStudents.map((r) => (
@@ -257,11 +280,27 @@ function CplRow({
                       {r.student.name} <span className="text-emerald-400">({r.cplAvgPct[cpl.code]}%)</span>
                     </span>
                   ))}
+                  {passingStudents.length === 0 && <span className="text-[10px] text-emerald-400 italic">–</span>}
                 </div>
               </div>
+              {partialStudents.length > 0 && (
+                <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
+                  <p className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1.5">
+                    <AlertTriangle size={13} className="text-amber-500" /> Sebagian Dinilai — {partialStudents.length} mhs
+                  </p>
+                  <p className="text-[10px] text-amber-600 mb-1.5 italic">CPMK yang dinilai sudah lulus, namun masih ada CPMK belum dinilai</p>
+                  <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                    {partialStudents.map((r) => (
+                      <span key={r.student.nim} className="text-[10px] bg-white border border-amber-200 text-amber-700 px-2 py-0.5 rounded-full whitespace-nowrap">
+                        {r.student.name} <span className="text-amber-400">({r.cplAvgPct[cpl.code]}%)</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="rounded-xl border border-red-100 bg-red-50 p-3">
                 <p className="text-xs font-semibold text-red-600 mb-2 flex items-center gap-1.5">
-                  <AlertTriangle size={13} className="text-red-500" /> Belum Terpenuhi — {failingStudents.length} mahasiswa
+                  <AlertTriangle size={13} className="text-red-500" /> Belum Terpenuhi — {failingStudents.length} mhs
                 </p>
                 <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
                   {failingStudents.map((r) => (
@@ -269,13 +308,14 @@ function CplRow({
                       {r.student.name} <span className="text-red-400">({r.cplAvgPct[cpl.code]}%)</span>
                     </span>
                   ))}
+                  {failingStudents.length === 0 && <span className="text-[10px] text-red-400 italic">–</span>}
                 </div>
               </div>
             </div>
           )}
           {noDataStudents.length > 0 && (
             <p className="text-[10px] text-gray-400 italic px-1">
-              {noDataStudents.length} mahasiswa belum ada nilai untuk {cpl.code}.
+              {noDataStudents.length} mahasiswa belum ada nilai sama sekali untuk {cpl.code}.
             </p>
           )}
         </div>
@@ -287,24 +327,25 @@ function CplRow({
 // ─── Student Perspective Section ──────────────────────────────────────────────
 const PAGE_SIZE_STUDENT = 10;
 
-function StudentPerspectiveSection({ results, cpls }: { results: RealStudentResult[]; cpls: RealCpl[] }) {
-  const [query, setQuery]         = useState('');
-  const [angkatan, setAngkatan]   = useState<number[]>([]);
-  const [page, setPage]           = useState(0);
+function StudentPerspectiveSection({
+  results, cpls, cpmkList, cplToCpmkIds, cpmkIdToCourseIds, allCourseInfoMap,
+}: {
+  results: RealStudentResult[];
+  cpls: RealCpl[];
+  cpmkList: RealCpmk[];
+  cplToCpmkIds: Map<string, string[]>;
+  cpmkIdToCourseIds: Map<string, string[]>;
+  allCourseInfoMap: Map<string, { code: string; name: string }>;
+}) {
+  const [query, setQuery]             = useState('');
+  const [page, setPage]               = useState(0);
   const [expandedNim, setExpandedNim] = useState<string | null>(null);
 
-  const angkatanOptions = useMemo(() => {
-    const set = new Set(results.map((r) => r.angkatan));
-    return [...set].sort().map((a) => ({ value: a, label: `Angk. ${a}` }));
-  }, [results]);
-
   const filtered = useMemo(() => {
-    let list = results;
-    if (angkatan.length > 0) list = list.filter((r) => angkatan.includes(r.angkatan));
     const q = query.trim().toLowerCase();
-    if (q) list = list.filter((r) => r.student.name.toLowerCase().includes(q) || r.student.nim.includes(q));
-    return list;
-  }, [results, angkatan, query]);
+    if (!q) return results;
+    return results.filter((r) => r.student.name.toLowerCase().includes(q) || r.student.nim.includes(q));
+  }, [results, query]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE_STUDENT);
   const paginated  = filtered.slice(page * PAGE_SIZE_STUDENT, (page + 1) * PAGE_SIZE_STUDENT);
@@ -316,18 +357,12 @@ function StudentPerspectiveSection({ results, cpls }: { results: RealStudentResu
         <User size={18} className="text-primary shrink-0" />
         <div className="flex-1">
           <h2 className="text-base font-bold text-gray-800">Data Capaian Mahasiswa CPL</h2>
-          <p className="text-xs text-gray-400">{filtered.length} mahasiswa · klik baris untuk detail CPL</p>
+          <p className="text-xs text-gray-400">{filtered.length} mahasiswa · klik baris untuk detail CPL & CPMK</p>
         </div>
       </div>
 
-      <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60 flex flex-wrap items-center gap-3">
-        <MultiSelectChip
-          options={angkatanOptions}
-          value={angkatan}
-          onChange={(v) => { setAngkatan(v); resetNav(); }}
-          placeholder="Semua Angkatan"
-        />
-        <div className="relative flex-1 min-w-[160px] max-w-xs">
+      <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60">
+        <div className="relative max-w-xs">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input type="text" placeholder="Cari nama atau NIM..."
             value={query} onChange={(e) => { setQuery(e.target.value); resetNav(); }}
@@ -375,28 +410,34 @@ function StudentPerspectiveSection({ results, cpls }: { results: RealStudentResu
               </button>
 
               {isExpanded && (
-                <div className="mx-5 mb-4 space-y-3">
+                <div className="mx-5 mb-4 space-y-2">
                   {([
-                    { key: 'met',      label: 'Terpenuhi',           wrapCls: 'bg-emerald-50 border-emerald-200', labelCls: 'text-emerald-700', cardCls: 'bg-white border-emerald-100', dotCls: 'bg-emerald-100 text-emerald-600', dotIcon: '✓' },
-                    { key: 'not_met',  label: 'Belum Terpenuhi',     wrapCls: 'bg-red-50 border-red-200',         labelCls: 'text-red-600',     cardCls: 'bg-white border-red-100',     dotCls: 'bg-red-100 text-red-500',      dotIcon: '✗' },
-                    { key: 'no_data',  label: 'Belum Dapat Diukur',  wrapCls: 'bg-gray-50 border-gray-200',       labelCls: 'text-gray-500',    cardCls: 'bg-white border-gray-100',    dotCls: 'bg-gray-100 text-gray-400',    dotIcon: '–' },
-                  ] as const).map(({ key, label, wrapCls, labelCls, cardCls, dotCls, dotIcon }) => {
+                    { key: 'met',     label: 'Terpenuhi',            wrapCls: 'bg-emerald-50 border-emerald-200', labelCls: 'text-emerald-700', dotCls: 'bg-emerald-100 text-emerald-600', dotIcon: '✓' },
+                    { key: 'partial', label: 'Sebagian Dinilai',     wrapCls: 'bg-amber-50 border-amber-200',     labelCls: 'text-amber-700',   dotCls: 'bg-amber-100 text-amber-600',    dotIcon: '◐' },
+                    { key: 'not_met', label: 'Belum Terpenuhi',      wrapCls: 'bg-red-50 border-red-200',         labelCls: 'text-red-600',     dotCls: 'bg-red-100 text-red-500',        dotIcon: '✗' },
+                    { key: 'no_data', label: 'Belum Dapat Diukur',   wrapCls: 'bg-gray-50 border-gray-200',       labelCls: 'text-gray-500',    dotCls: 'bg-gray-100 text-gray-400',      dotIcon: '–' },
+                  ] as const).map(({ key, label, wrapCls, labelCls, dotCls, dotIcon }) => {
                     const groupCpls = cpls.filter((cpl) => result.cplMap[cpl.code] === key);
                     if (groupCpls.length === 0) return null;
                     return (
                       <div key={key} className={`rounded-xl border p-3 ${wrapCls}`}>
-                        <p className={`text-xs font-semibold mb-2.5 flex items-center gap-1.5 ${labelCls}`}>
+                        <p className={`text-xs font-semibold mb-2 flex items-center gap-1.5 ${labelCls}`}>
                           <span className={`flex w-4 h-4 rounded-full items-center justify-center text-[9px] font-bold ${dotCls}`}>{dotIcon}</span>
                           {label}
                           <span className="ml-auto font-bold">{groupCpls.length} CPL</span>
                         </p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                          {groupCpls.map((cpl) => (
-                            <div key={cpl.code} className={`flex items-start gap-2.5 p-2.5 rounded-lg border ${cardCls}`}>
-                              <span className={`flex w-5 h-5 rounded-full items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 ${dotCls}`}>{dotIcon}</span>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="text-[11px] font-bold text-gray-700">{cpl.code}</span>
+                        <div className="space-y-2">
+                          {groupCpls.map((cpl) => {
+                            const linkedCpmkIds = cplToCpmkIds.get(cpl.id) ?? [];
+                            const linkedCpmks = linkedCpmkIds
+                              .map((id) => cpmkList.find((c) => c.id === id))
+                              .filter(Boolean) as RealCpmk[];
+                            return (
+                              <div key={cpl.code} className="rounded-lg border bg-white border-gray-100 p-2.5">
+                                {/* CPL header */}
+                                <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+                                  <span className={`flex w-4 h-4 rounded-full items-center justify-center text-[9px] font-bold shrink-0 ${dotCls}`}>{dotIcon}</span>
+                                  <span className="text-[11px] font-bold text-gray-800">{cpl.code}</span>
                                   <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${CATEGORY_COLOR[cpl.category]?.chip ?? 'bg-gray-100 text-gray-600'}`}>
                                     {cpl.category?.replace(/_/g, ' ')}
                                   </span>
@@ -406,10 +447,56 @@ function StudentPerspectiveSection({ results, cpls }: { results: RealStudentResu
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-[10px] text-gray-500 leading-tight mt-0.5 line-clamp-2">{cpl.name}</p>
+                                <p className="text-[10px] text-gray-500 leading-tight mb-2 pl-5 line-clamp-2">{cpl.name}</p>
+
+                                {/* CPMK breakdown */}
+                                {linkedCpmks.length > 0 && (
+                                  <div className="pl-5 space-y-1.5">
+                                    {linkedCpmks.map((cpmk) => {
+                                      const score = result.cpmkScores[cpmk.id];
+                                      const hasScore = score !== undefined;
+                                      const sc = hasScore ? pctColor(Math.round(score)) : null;
+                                      const courseIds = cpmkIdToCourseIds.get(cpmk.id) ?? [];
+                                      return (
+                                        <div key={cpmk.id} className="bg-gray-50 rounded-lg px-2 py-1.5 text-[10px]">
+                                          <div className="flex items-center gap-2">
+                                            <span className="font-semibold text-violet-600 shrink-0 font-mono">{cpmk.code}</span>
+                                            <span className="flex-1 text-gray-500 truncate">{cpmk.name}</span>
+                                            {hasScore ? (
+                                              <span className={`font-bold shrink-0 ${sc!.text}`}>{Math.round(score)}%</span>
+                                            ) : (
+                                              <span className="text-gray-300 shrink-0">–</span>
+                                            )}
+                                          </div>
+                                          {courseIds.length > 0 && (
+                                            <div className="flex flex-wrap gap-1 mt-1.5">
+                                              {courseIds.map((cid) => {
+                                                const info = allCourseInfoMap.get(cid);
+                                                const code = info?.code ?? cid.slice(0, 8);
+                                                const name = info?.name ?? '';
+                                                const cs = result.cpmkCourseScores[cpmk.id]?.[cid];
+                                                const hasCs = cs !== undefined;
+                                                const cc = hasCs ? pctColor(Math.round(cs)) : null;
+                                                return hasCs ? (
+                                                  <span key={cid} title={name ? `${name} · ${Math.round(cs)}` : String(Math.round(cs))} className={`cursor-default text-[9px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap border ${cc!.bg} ${cc!.text}`}>
+                                                    {code} · {Math.round(cs)}
+                                                  </span>
+                                                ) : (
+                                                  <span key={cid} title={name || code} className="cursor-default text-[9px] text-gray-400 bg-white border border-gray-200 px-1.5 py-0.5 rounded-full whitespace-nowrap opacity-60">
+                                                    {code}
+                                                  </span>
+                                                );
+                                              })}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     );
@@ -442,78 +529,20 @@ function StudentPerspectiveSection({ results, cpls }: { results: RealStudentResu
   );
 }
 
-// ─── Pemetaan CPL → CPMK ─────────────────────────────────────────────────────
-function PemetaanSection({ cpls, cpmks, cplToCpmkIds }: {
-  cpls: RealCpl[];
-  cpmks: RealCpmk[];
-  cplToCpmkIds: Map<string, string[]>;
-}) {
-  const [expandedCpl, setExpandedCpl] = useState<string | null>(null);
-
-  return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="p-5 border-b border-gray-100 flex items-center gap-3">
-        <Layers size={18} className="text-primary shrink-0" />
-        <div className="flex-1">
-          <h2 className="text-base font-bold text-gray-800">Pemetaan CPL → CPMK</h2>
-          <p className="text-xs text-gray-400">{cpls.length} CPL · {cpmks.length} CPMK</p>
-        </div>
-      </div>
-      <div>
-        {cpls.map((cpl) => {
-          const linkedIds  = cplToCpmkIds.get(cpl.id) ?? [];
-          const linkedCpmks = linkedIds.map((id) => cpmks.find((c) => c.id === id)).filter(Boolean) as RealCpmk[];
-          const isExpanded = expandedCpl === cpl.id;
-
-          return (
-            <div key={cpl.id} className="border-b border-gray-50 last:border-0">
-              <button className="w-full text-left px-5 py-3.5 hover:bg-gray-50 transition-colors group"
-                onClick={() => setExpandedCpl(isExpanded ? null : cpl.id)}>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-bold text-primary w-12 shrink-0">{cpl.code}</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${CATEGORY_COLOR[cpl.category]?.chip ?? 'bg-gray-100 text-gray-600'}`}>
-                    {cpl.category?.replace(/_/g, ' ')}
-                  </span>
-                  <span className="flex-1 text-sm text-gray-700 truncate">{cpl.name}</span>
-                  <span className="hidden sm:block text-[10px] bg-violet-50 text-violet-600 px-2 py-0.5 rounded-full font-medium shrink-0">
-                    {linkedCpmks.length} CPMK
-                  </span>
-                  <span className="text-gray-400 group-hover:text-gray-600 shrink-0">
-                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  </span>
-                </div>
-              </button>
-              {isExpanded && (
-                <div className="mx-5 mb-4 space-y-1.5">
-                  {linkedCpmks.length === 0 ? (
-                    <p className="text-xs text-gray-400 italic px-1 py-2">Belum ada CPMK terpetakan.</p>
-                  ) : linkedCpmks.map((cpmk) => (
-                    <div key={cpmk.id} className="flex items-start gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
-                      <span className="text-[10px] font-bold text-violet-700 shrink-0 mt-0.5 bg-violet-50 px-1.5 py-0.5 rounded-md whitespace-nowrap">{cpmk.code}</span>
-                      <p className="text-xs text-gray-600 leading-relaxed">{cpmk.name}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const { user } = useUser();
   const { selectedCurriculum } = useApp();
   const curriculumId = selectedCurriculum?.id;
 
-  const [selectedAngkatan, setSelectedAngkatan] = useState<number[]>([]);
-  const [expandedCpl, setExpandedCpl]           = useState<string | null>(null);
-  const [heatmapPage, setHeatmapPage]           = useState(0);
-  const [thresholds, setThresholds]             = useState<Record<string, number>>(DEFAULT_THRESHOLDS);
-  const [showThresholds, setShowThresholds]     = useState(false);
+  const [selectedAngkatan, setSelectedAngkatan]     = useState<number[]>([]);
+  const [expandedCpl, setExpandedCpl]               = useState<string | null>(null);
+  const [heatmapPage, setHeatmapPage]               = useState(0);
+  const [thresholds, setThresholds]                 = useState<Record<string, number>>(DEFAULT_THRESHOLDS);
+  const [showThresholds, setShowThresholds]         = useState(false);
+  const [matrixSemester, setMatrixSemester]         = useState<number | null>(null);
+  const [trackingExpanded, setTrackingExpanded]     = useState<string | null>(null);
+  const [trackingSemester, setTrackingSemester]     = useState<number | null>(null);
   const PAGE_SIZE = 15;
 
   // ── API queries ───────────────────────────────────────────────────────────
@@ -521,6 +550,7 @@ export default function DashboardPage() {
   const { data: subData }     = useQuery({ queryKey: ['count-subcpmk'], queryFn: () => subCpmkService.getAll({ limit: 1 }) });
   const { data: compData }    = useQuery({ queryKey: ['count-comp'],    queryFn: () => assessmentComponentService.getAll({ limit: 1 }) });
   const { data: classesData } = useQuery({ queryKey: ['count-classes'], queryFn: () => academicClassService.getAll({ limit: 100 }) });
+  const { data: allCoursesData } = useQuery({ queryKey: ['courses-all'], queryFn: () => courseService.getAll({ limit: 100 }) });
 
   // Full CPL list with category field (CplCpmkMatrixCpl type lacks category)
   // Note: /api/cpl does not support curriculumId filter — fetch all and rely on cpmkCplMatrix for curriculum scoping
@@ -533,6 +563,13 @@ export default function DashboardPage() {
     queryKey: ['cpmk-cpl-matrix-dashboard', curriculumId],
     queryFn:  () => cpmkCplMappingService.getMatrix({ curriculumId: curriculumId! }),
     enabled:  !!curriculumId,
+  });
+
+  const { data: cpmkMkMatrixData } = useQuery({
+    queryKey: ['cpmk-mk-matrix-dashboard', curriculumId, selectedCurriculum?.year],
+    queryFn: () => cpmkCourseMappingService.getMatrix({ curriculumId: curriculumId!, curriculumYear: selectedCurriculum?.year }),
+    enabled: !!curriculumId,
+    staleTime: 10 * 60 * 1000,
   });
 
   const realClasses   = classesData?.data ?? [];
@@ -570,6 +607,33 @@ export default function DashboardPage() {
     return map;
   }, [realCpls, rawMappings]);
 
+  // cpmkId → courseIds[] from curriculum CPMK-course matrix
+  const cpmkIdToCourseIds = useMemo(() => {
+    const map = new Map<string, string[]>();
+    const matrix = cpmkMkMatrixData?.data;
+    if (!matrix) return map;
+    const rows = [
+      ...(matrix.matrix ?? []).flatMap((r) => r.cpmks),
+      ...(matrix.unmappedCpmks ?? []),
+    ];
+    rows.forEach((cpmk) => { if (cpmk.courseIds?.length) map.set(cpmk.id, cpmk.courseIds); });
+    return map;
+  }, [cpmkMkMatrixData]);
+
+  const allCurriculumCourseIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const courseIds of cpmkIdToCourseIds.values()) courseIds.forEach((id) => ids.add(id));
+    return [...ids];
+  }, [cpmkIdToCourseIds]);
+
+  const courseByIdResults = useQueries({
+    queries: allCurriculumCourseIds.map((courseId) => ({
+      queryKey: ['course-by-id-dash', courseId],
+      queryFn: () => courseService.getById(courseId),
+      staleTime: 30 * 60 * 1000,
+    })),
+  });
+
   // ── Compute per-student CPL achievement ──────────────────────────────────
   const allStudentResults = useMemo((): RealStudentResult[] => {
     if (realCpls.length === 0) return [];
@@ -582,25 +646,38 @@ export default function DashboardPage() {
     }
     if (studentMap.size === 0) return [];
 
-    // Collect scores per student per CPMK
-    const scoresByStudent = new Map<string, Map<string, number[]>>();
-    for (const res of classScoreResults) {
+    // studentId → cpmkId → courseId → scores[]
+    const scoresByStudent = new Map<string, Map<string, Map<string, number[]>>>();
+    classScoreResults.forEach((res, i) => {
+      const courseId = realClasses[i]?.course?.id;
+      if (!courseId) return;
       for (const s of res.data?.data ?? []) {
         if (!scoresByStudent.has(s.studentId)) scoresByStudent.set(s.studentId, new Map());
         const sm = scoresByStudent.get(s.studentId)!;
-        if (!sm.has(s.cpmkId)) sm.set(s.cpmkId, []);
-        sm.get(s.cpmkId)!.push(s.score);
+        if (!sm.has(s.cpmkId)) sm.set(s.cpmkId, new Map());
+        const cm = sm.get(s.cpmkId)!;
+        if (!cm.has(courseId)) cm.set(courseId, []);
+        cm.get(courseId)!.push(s.score);
       }
-    }
+    });
 
     return [...studentMap.values()].map((student) => {
-      const cpmkScoreMap = scoresByStudent.get(student.id) ?? new Map<string, number[]>();
+      const cpmkScoreMap = scoresByStudent.get(student.id) ?? new Map<string, Map<string, number[]>>();
       const cpmkAvg = new Map<string, number>();
-      for (const [id, scores] of cpmkScoreMap) {
-        cpmkAvg.set(id, scores.reduce((a, b) => a + b, 0) / scores.length);
+      const cpmkCourseScores: Record<string, Record<string, number>> = {};
+      for (const [cpmkId, courseMap] of cpmkScoreMap) {
+        const totalCurrCourses = cpmkIdToCourseIds.get(cpmkId)?.length ?? courseMap.size;
+        let sum = 0;
+        cpmkCourseScores[cpmkId] = {};
+        for (const [courseId, scores] of courseMap) {
+          const courseAvg = scores.reduce((a, b) => a + b, 0) / scores.length;
+          sum += courseAvg;
+          cpmkCourseScores[cpmkId][courseId] = courseAvg;
+        }
+        cpmkAvg.set(cpmkId, sum / totalCurrCourses);
       }
 
-      const cplMap:    Record<string, 'met' | 'not_met' | 'no_data'> = {};
+      const cplMap:    Record<string, 'met' | 'partial' | 'not_met' | 'no_data'> = {};
       const cplAvgPct: Record<string, number> = {};
       let metCount = 0, totalWithData = 0;
 
@@ -613,40 +690,207 @@ export default function DashboardPage() {
           cplAvgPct[cpl.code] = 0;
         } else {
           totalWithData++;
-          const avg = scored.reduce((s, id) => s + cpmkAvg.get(id)!, 0) / scored.length;
+          // Divide by total linked CPMKs — unscored CPMKs count as 0
+          const avg = scored.reduce((s, id) => s + cpmkAvg.get(id)!, 0) / linked.length;
           cplAvgPct[cpl.code] = Math.round(avg);
           const threshold = thresholds[cpl.category] ?? 60;
-          const allPass = scored.every((id) => cpmkAvg.get(id)! >= threshold);
-          cplMap[cpl.code] = allPass ? 'met' : 'not_met';
-          if (allPass) metCount++;
+          if (avg < threshold) {
+            cplMap[cpl.code] = 'not_met';
+          } else if (scored.length < linked.length) {
+            cplMap[cpl.code] = 'partial';
+          } else {
+            cplMap[cpl.code] = 'met';
+            metCount++;
+          }
         }
       }
 
-      return { student, angkatan: nimToAngkatan(student.nim), cplMap, cplAvgPct, metCount, totalWithData };
+      return { student, angkatan: student.entryYear ?? 0, cplMap, cplAvgPct, cpmkScores: Object.fromEntries(cpmkAvg), cpmkCourseScores, metCount, totalWithData };
     }).sort((a, b) => b.metCount - a.metCount);
-  }, [realCpls, cplToCpmkIds, classDetailResults, classScoreResults, thresholds]);
+  }, [realCpls, cplToCpmkIds, classDetailResults, classScoreResults, realClasses, cpmkIdToCourseIds, thresholds]);
 
-  // ── CPL aggregate stats ───────────────────────────────────────────────────
-  const cplStats = useMemo((): RealCplStat[] =>
-    realCpls.map((cpl) => {
-      const withData = allStudentResults.filter((r) => r.cplMap[cpl.code] !== 'no_data');
-      const met      = withData.filter((r) => r.cplMap[cpl.code] === 'met').length;
-      const total    = withData.length;
-      return { ...cpl, pct: total > 0 ? Math.round((met / total) * 100) : 0, met, total };
-    }),
-  [realCpls, allStudentResults]);
-
-  // ── Filter by angkatan ────────────────────────────────────────────────────
+  // ── Filter by angkatan (applied globally to all sections) ───────────────
   const filteredResults = useMemo(() =>
     selectedAngkatan.length === 0
       ? allStudentResults
       : allStudentResults.filter((r) => selectedAngkatan.includes(r.angkatan)),
   [allStudentResults, selectedAngkatan]);
 
-  const angkatanOptions = useMemo(() => {
-    const set = new Set(allStudentResults.map((r) => r.angkatan));
-    return [...set].sort().map((a) => ({ value: a, label: `Angk. ${a}` }));
-  }, [allStudentResults]);
+  // ── CPL aggregate stats (uses filteredResults so angkatan filter affects charts) ──
+  const cplStats = useMemo((): RealCplStat[] =>
+    realCpls.map((cpl) => {
+      const withData = filteredResults.filter((r) => r.cplMap[cpl.code] !== 'no_data');
+      const met      = withData.filter((r) => r.cplMap[cpl.code] === 'met').length;
+      const total    = withData.length;
+      return { ...cpl, pct: total > 0 ? Math.round((met / total) * 100) : 0, met, total };
+    }),
+  [realCpls, filteredResults]);
+
+  const angkatanOptions = [
+    { value: 2024, label: 'Angk. 2024' },
+    { value: 2025, label: 'Angk. 2025' },
+  ];
+
+  // ── Matrix data ────────────────────────────────────────────────────────────
+  // courseId → all student IDs enrolled in any class of that course
+  const courseStudentMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    classDetailResults.forEach((res, i) => {
+      const courseId = realClasses[i]?.course?.id;
+      if (!courseId) return;
+      if (!map.has(courseId)) map.set(courseId, new Set());
+      for (const { student } of res.data?.data?.students ?? []) {
+        map.get(courseId)!.add(student.id);
+      }
+    });
+    return map;
+  }, [classDetailResults, realClasses]);
+
+  // studentId → RealStudentResult for O(1) lookup (uses filteredResults so respects angkatan filter)
+  const studentResultMap = useMemo(() => {
+    const map = new Map<string, RealStudentResult>();
+    for (const r of filteredResults) map.set(r.student.id, r);
+    return map;
+  }, [filteredResults]);
+
+  const uniqueCourses = useMemo(() => {
+    const semesterOf = new Map<string, number>(
+      (allCoursesData?.data ?? []).map((c) => [c.id, c.semester]),
+    );
+    const seen = new Set<string>();
+    const courses: { id: string; code: string; name: string; semester: number }[] = [];
+    for (const cls of realClasses) {
+      if (!seen.has(cls.course.id)) {
+        seen.add(cls.course.id);
+        courses.push({ ...cls.course, semester: semesterOf.get(cls.course.id) ?? 0 });
+      }
+    }
+    return courses.sort((a, b) => a.semester - b.semester || a.code.localeCompare(b.code));
+  }, [realClasses, allCoursesData]);
+
+  const allCourseInfoMap = useMemo(() => {
+    const m = new Map<string, { code: string; name: string }>();
+    courseByIdResults.forEach((q, i) => {
+      const courseId = allCurriculumCourseIds[i];
+      const course = q.data?.data;
+      if (course) m.set(courseId, { code: course.code, name: course.name });
+    });
+    uniqueCourses.forEach((c) => { if (!m.has(c.id)) m.set(c.id, { code: c.code, name: c.name }); });
+    return m;
+  }, [courseByIdResults, allCurriculumCourseIds, uniqueCourses]);
+
+  // Available semesters from fetched course data (for the dropdown)
+  const availableMatrixSemesters = useMemo(() => {
+    const sems = new Set(uniqueCourses.map((c) => c.semester).filter((s) => s > 0));
+    return [...sems].sort((a, b) => a - b);
+  }, [uniqueCourses]);
+
+  // Courses shown in the matrix (filtered by selected semester)
+  const matrixCourses = useMemo(() =>
+    matrixSemester === null
+      ? uniqueCourses
+      : uniqueCourses.filter((c) => c.semester === matrixSemester),
+  [uniqueCourses, matrixSemester]);
+
+  // How many filtered students are enrolled per course (denominator for each column)
+  const filteredCourseCount = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [courseId, studentIds] of courseStudentMap) {
+      let n = 0;
+      for (const sid of studentIds) if (studentResultMap.has(sid)) n++;
+      map.set(courseId, n);
+    }
+    return map;
+  }, [courseStudentMap, studentResultMap]);
+
+  // (cplId, courseId) → count of filtered students in that course with cplMap[cpl.code] === 'met'
+  const cplMkMatrix = useMemo(() => {
+    const matrix = new Map<string, Map<string, number>>();
+    for (const cpl of realCpls) {
+      const row = new Map<string, number>();
+      for (const course of uniqueCourses) {
+        let count = 0;
+        for (const sid of courseStudentMap.get(course.id) ?? new Set<string>()) {
+          const r = studentResultMap.get(sid);
+          if (r && r.cplMap[cpl.code] === 'met') count++;
+        }
+        row.set(course.id, count);
+      }
+      matrix.set(cpl.id, row);
+    }
+    return matrix;
+  }, [realCpls, uniqueCourses, courseStudentMap, studentResultMap]);
+
+  // courseId → Set<cpmkId> that have been scored in any class of that course
+  const courseScoredCpmkIds = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    classScoreResults.forEach((res, i) => {
+      const courseId = realClasses[i]?.course?.id;
+      if (!courseId) return;
+      if (!map.has(courseId)) map.set(courseId, new Set());
+      for (const s of res.data?.data ?? []) map.get(courseId)!.add(s.cpmkId);
+    });
+    return map;
+  }, [classScoreResults, realClasses]);
+
+  // cpmkId → CPL codes it contributes to (for display)
+  const cpmkToCplCodes = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const cpl of realCpls) {
+      for (const cpmkId of (cplToCpmkIds.get(cpl.id) ?? [])) {
+        if (!map.has(cpmkId)) map.set(cpmkId, []);
+        map.get(cpmkId)!.push(cpl.code);
+      }
+    }
+    return map;
+  }, [realCpls, cplToCpmkIds]);
+
+  // cpmkId → min threshold across its linked CPLs
+  const cpmkThresholdMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const cpl of realCpls) {
+      const t = thresholds[cpl.category] ?? 60;
+      for (const cpmkId of (cplToCpmkIds.get(cpl.id) ?? [])) {
+        map.set(cpmkId, Math.min(map.get(cpmkId) ?? 100, t));
+      }
+    }
+    return map;
+  }, [realCpls, cplToCpmkIds, thresholds]);
+
+  // courseId → Map<cpmkId, { above: number; scored: number }>
+  // Counts ONLY filtered students, per course per CPMK
+  const courseCpmkPassStats = useMemo(() => {
+    // courseId → cpmkId → studentId → scores[]
+    const raw = new Map<string, Map<string, Map<string, number[]>>>();
+    classScoreResults.forEach((res, i) => {
+      const courseId = realClasses[i]?.course?.id;
+      if (!courseId) return;
+      for (const s of res.data?.data ?? []) {
+        if (!studentResultMap.has(s.studentId)) continue; // only filtered students
+        if (!raw.has(courseId)) raw.set(courseId, new Map());
+        if (!raw.get(courseId)!.has(s.cpmkId)) raw.get(courseId)!.set(s.cpmkId, new Map());
+        const sm = raw.get(courseId)!.get(s.cpmkId)!;
+        if (!sm.has(s.studentId)) sm.set(s.studentId, []);
+        sm.get(s.studentId)!.push(s.score);
+      }
+    });
+
+    const result = new Map<string, Map<string, { above: number; scored: number }>>();
+    for (const [courseId, cpmkMap] of raw) {
+      result.set(courseId, new Map());
+      for (const [cpmkId, studentMap] of cpmkMap) {
+        const threshold = cpmkThresholdMap.get(cpmkId) ?? 60;
+        let above = 0, scored = 0;
+        for (const scores of studentMap.values()) {
+          const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+          scored++;
+          if (avg >= threshold) above++;
+        }
+        result.get(courseId)!.set(cpmkId, { above, scored });
+      }
+    }
+    return result;
+  }, [classScoreResults, realClasses, studentResultMap, cpmkThresholdMap]);
 
   // ── Summary stats ─────────────────────────────────────────────────────────
   const totalFiltered   = filteredResults.length;
@@ -758,6 +1002,55 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* ── Cara Kerja Sistem Penilaian ───────────────────────────────────── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-5">Cara Kerja Sistem Penilaian</h2>
+        <div className="space-y-0">
+          <ExplanationStep step={1} title="Hitung Nilai CPMK per Mata Kuliah">
+            <p>Setiap mahasiswa dinilai per CPMK melalui komponen penilaian di tiap kelas. Nilai per mata kuliah dihitung dari rata-rata semua komponen penilaian CPMK tersebut dalam kelas itu.</p>
+          </ExplanationStep>
+          <ExplanationStep step={2} title="Rata-rata CPMK dibagi total mata kuliah di kurikulum">
+            <p>
+              Nilai CPMK mahasiswa = <strong>jumlah nilai di tiap mata kuliah yang diambil</strong> ÷ <strong>total mata kuliah di kurikulum yang menganut CPMK tersebut</strong>.
+            </p>
+            <p className="mt-1">
+              Contoh: CPMK ada di 6 mata kuliah, mahasiswa baru mengambil 2 → skor = (nilai MK-1 + nilai MK-2) ÷ 6. Mata kuliah yang belum diambil dihitung 0.
+            </p>
+          </ExplanationStep>
+          <ExplanationStep step={3} title="Rata-rata CPL dibagi total CPMK yang terhubung">
+            <p>
+              Nilai CPL mahasiswa = <strong>jumlah nilai semua CPMK yang terhubung ke CPL</strong> ÷ <strong>total CPMK yang terhubung</strong>.
+            </p>
+            <p className="mt-1">CPMK yang belum dinilai dihitung 0, bukan dilewati. Lalu dibandingkan dengan threshold per kategori:</p>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {Object.entries(CATEGORY_LABEL).map(([key, label]) => (
+                <span key={key} className={`text-[10px] px-2 py-1 rounded-full font-semibold ${CATEGORY_COLOR[key]?.chip ?? 'bg-gray-100 text-gray-600'}`}>
+                  {label}: ≥{thresholds[key]}%
+                </span>
+              ))}
+            </div>
+          </ExplanationStep>
+          <ExplanationStep step={4} title="Tentukan Status CPL">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+              {(Object.entries(STATUS_CONFIG) as [CplStatus, typeof STATUS_CONFIG[CplStatus]][]).map(([key, cfg]) => (
+                <div key={key} className={`flex items-start gap-2 rounded-lg border px-3 py-2 ${cfg.bg}`}>
+                  <cfg.icon size={14} className={`${cfg.cls} shrink-0 mt-0.5`} />
+                  <div>
+                    <p className={`text-[11px] font-bold ${cfg.cls}`}>{cfg.label}</p>
+                    <p className="text-[10px] text-gray-500 leading-snug">
+                      {key === 'met'     && 'Semua CPMK sudah dinilai dan nilai CPL ≥ threshold'}
+                      {key === 'partial' && 'Nilai CPL (dari CPMK yang dinilai) ≥ threshold, tapi masih ada CPMK belum dinilai'}
+                      {key === 'not_met' && 'Nilai CPL < threshold (termasuk efek 0 dari CPMK yang belum dinilai)'}
+                      {key === 'no_data' && 'Belum ada satupun CPMK yang dinilai'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ExplanationStep>
+        </div>
+      </div>
+
       {/* ══ CPL ACHIEVEMENT ══════════════════════════════════════════════════ */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
 
@@ -813,13 +1106,13 @@ export default function DashboardPage() {
                       <span className="text-sm font-bold text-gray-800">{thresholds[key]}%</span>
                     </div>
                     <input
-                      type="range" min={50} max={100} step={5}
+                      type="range" min={0} max={100} step={1}
                       value={thresholds[key]}
                       onChange={(e) => setThresholds((prev) => ({ ...prev, [key]: Number(e.target.value) }))}
                       className="w-full h-1.5 rounded-full accent-primary cursor-pointer"
                     />
                     <div className="flex justify-between text-[10px] text-gray-400">
-                      <span>50%</span><span>100%</span>
+                      <span>0%</span><span>100%</span>
                     </div>
                   </div>
                 ))}
@@ -878,7 +1171,7 @@ export default function DashboardPage() {
                   <PolarGrid stroke="#e5e7eb" />
                   <PolarAngleAxis dataKey="category" tick={{ fontSize: 10, fill: '#6b7280' }} />
                   <Radar name="Pencapaian" dataKey="pct" stroke="#6366f1" fill="#6366f1" fillOpacity={0.25} />
-                  <Tooltip formatter={(v: number) => [`${v}%`, 'Pencapaian']} />
+                  <Tooltip formatter={(v) => [`${v}%`, 'Pencapaian']} />
                 </RadarChart>
               </ResponsiveContainer>
             )}
@@ -903,6 +1196,7 @@ export default function DashboardPage() {
               cpl={stat}
               pct={stat.pct} met={stat.met} total={stat.total}
               passingStudents={filteredResults.filter((r) => r.cplMap[stat.code] === 'met')}
+              partialStudents={filteredResults.filter((r) => r.cplMap[stat.code] === 'partial')}
               failingStudents={filteredResults.filter((r) => r.cplMap[stat.code] === 'not_met')}
               noDataStudents={filteredResults.filter((r) => r.cplMap[stat.code] === 'no_data')}
               expanded={expandedCpl === stat.id}
@@ -913,35 +1207,135 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Student perspective ─────────────────────────────────────────────── */}
-      <StudentPerspectiveSection results={allStudentResults} cpls={realCpls} />
+      <StudentPerspectiveSection
+        results={filteredResults}
+        cpls={realCpls}
+        cpmkList={realCpmks}
+        cplToCpmkIds={cplToCpmkIds}
+        cpmkIdToCourseIds={cpmkIdToCourseIds}
+        allCourseInfoMap={allCourseInfoMap}
+      />
 
-      {/* ── Pemetaan CPL → CPMK ────────────────────────────────────────────── */}
-      <PemetaanSection cpls={realCpls} cpmks={realCpmks} cplToCpmkIds={cplToCpmkIds} />
+      {/* ── Tracking Capaian CPMK per Mata Kuliah ─────────────────────────── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="p-5 border-b border-gray-100 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 min-w-0">
+            <BookOpen size={18} className="text-primary shrink-0" />
+            <div>
+              <h2 className="text-base font-bold text-gray-800">Tracking Capaian CPMK per Mata Kuliah</h2>
+              <p className="text-xs text-gray-400">Jumlah mahasiswa yang lulus tiap CPMK dalam satu MK, dikaitkan ke CPL</p>
+            </div>
+          </div>
+          <select
+            value={trackingSemester ?? ''}
+            onChange={(e) => {
+              const v = e.target.value === '' ? null : Number(e.target.value);
+              setTrackingSemester(v);
+              setTrackingExpanded(null);
+            }}
+            className="shrink-0 text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            <option value="">Semua Semester</option>
+            {availableMatrixSemesters.map((s) => (
+              <option key={s} value={s}>Semester {s}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          {uniqueCourses
+            .filter((c) => trackingSemester === null || c.semester === trackingSemester)
+            .map((course) => {
+            const stats = courseCpmkPassStats.get(course.id);
+            const totalEnrolled = filteredCourseCount.get(course.id) ?? 0;
+            const isExpanded = trackingExpanded === course.id;
+
+            if (!stats || stats.size === 0) return null;
+
+            const cpmkEntries = [...stats.entries()]
+              .map(([cpmkId, s]) => ({ cpmkId, ...s, cpmk: realCpmks.find((c) => c.id === cpmkId) }))
+              .filter((e) => e.cpmk)
+              .sort((a, b) => (a.cpmk!.code).localeCompare(b.cpmk!.code, undefined, { numeric: true }));
+
+            const avgPass = cpmkEntries.length > 0
+              ? Math.round(cpmkEntries.reduce((s, e) => s + (e.scored > 0 ? e.above / e.scored : 0), 0) / cpmkEntries.length * 100)
+              : 0;
+
+            return (
+              <div key={course.id} className="border-b border-gray-50 last:border-0">
+                <button
+                  className="w-full text-left px-5 py-3.5 hover:bg-gray-50 transition-colors group"
+                  onClick={() => setTrackingExpanded(isExpanded ? null : course.id)}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold text-primary font-mono w-24 shrink-0">{course.code}</span>
+                    <span className="flex-1 text-sm text-gray-700 truncate">{course.name}</span>
+                    <span className="text-[11px] text-gray-400 shrink-0">{totalEnrolled} mhs · {cpmkEntries.length} CPMK</span>
+                    <span className={`text-xs font-bold shrink-0 w-12 text-right ${pctColor(avgPass).text}`}>{avgPass}%</span>
+                    <span className="text-gray-400 group-hover:text-gray-600 shrink-0">
+                      {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </span>
+                  </div>
+                </button>
+
+                {isExpanded && (
+                  <div className="mx-5 mb-4 space-y-1.5">
+                    {/* Header */}
+                    <div className="grid grid-cols-[auto_1fr_auto_200px] gap-3 px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                      <span className="w-20">CPMK</span>
+                      <span>Deskripsi</span>
+                      <span className="text-right w-20">CPL Terkait</span>
+                      <span className="text-right">Lulus / Dinilai</span>
+                    </div>
+                    {cpmkEntries.map(({ cpmkId, cpmk, above, scored }) => {
+                      const threshold = cpmkThresholdMap.get(cpmkId) ?? 60;
+                      const pct = scored > 0 ? Math.round((above / scored) * 100) : 0;
+                      const colors = pctColor(pct);
+                      const relatedCpls = cpmkToCplCodes.get(cpmkId) ?? [];
+                      return (
+                        <div key={cpmkId}
+                          className="grid grid-cols-[auto_1fr_auto_200px] gap-3 items-center bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
+                          <span className="text-[11px] font-bold text-violet-700 font-mono w-20 shrink-0">{cpmk!.code}</span>
+                          <span className="text-xs text-gray-600 truncate">{cpmk!.name}</span>
+                          <div className="flex flex-wrap gap-1 justify-end w-20 shrink-0">
+                            {relatedCpls.map((code) => (
+                              <span key={code} className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap">
+                                {code}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: colors.bar }} />
+                            </div>
+                            <span className={`text-xs font-bold shrink-0 w-28 text-right ${colors.text}`}>
+                              {above}/{scored} <span className="font-normal text-gray-400">({pct}% ≥{threshold}%)</span>
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {/* ── Peta CPL per Mahasiswa (heatmap) ──────────────────────────────── */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="p-5 border-b border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Users size={18} className="text-primary" />
-            <div>
-              <h2 className="text-base font-bold text-gray-800">Peta CPL per Mahasiswa</h2>
-              <p className="text-xs text-gray-400">
-                {filteredResults.length} mhs ·
-                <span className="text-emerald-500"> ✓ terpenuhi</span> ·
-                <span className="text-red-400"> ✗ belum</span> ·
-                <span className="text-gray-300"> – belum ada nilai</span>
-              </p>
-            </div>
+        <div className="p-5 border-b border-gray-100 flex items-center gap-2">
+          <Users size={18} className="text-primary" />
+          <div>
+            <h2 className="text-base font-bold text-gray-800">Peta CPL per Mahasiswa</h2>
+            <p className="text-xs text-gray-400">
+              {filteredResults.length} mhs ·
+              <span className="text-emerald-500"> ✓ terpenuhi</span> ·
+              <span className="text-red-400"> ✗ belum</span> ·
+              <span className="text-gray-300"> – belum ada nilai</span>
+            </p>
           </div>
-          {totalHeatmapPages > 1 && (
-            <div className="flex items-center gap-2">
-              <button disabled={heatmapPage === 0} onClick={() => setHeatmapPage((p) => p - 1)}
-                className="px-2 py-1 text-xs rounded-lg border border-gray-200 disabled:opacity-30 hover:bg-gray-50">‹</button>
-              <span className="text-xs text-gray-500">{heatmapPage + 1}/{totalHeatmapPages}</span>
-              <button disabled={heatmapPage >= totalHeatmapPages - 1} onClick={() => setHeatmapPage((p) => p + 1)}
-                className="px-2 py-1 text-xs rounded-lg border border-gray-200 disabled:opacity-30 hover:bg-gray-50">›</button>
-            </div>
-          )}
         </div>
 
         <div className="overflow-x-auto">
@@ -996,6 +1390,24 @@ export default function DashboardPage() {
             </tbody>
           </table>
         </div>
+
+        {totalHeatmapPages > 1 && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50/60">
+            <p className="text-xs text-gray-400">
+              {heatmapPage * PAGE_SIZE + 1}–{Math.min((heatmapPage + 1) * PAGE_SIZE, filteredResults.length)} dari {filteredResults.length}
+            </p>
+            <div className="flex items-center gap-1">
+              <button disabled={heatmapPage === 0} onClick={() => setHeatmapPage((p) => p - 1)}
+                className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 disabled:opacity-30 hover:bg-gray-100 transition-colors font-medium">‹ Prev</button>
+              {Array.from({ length: totalHeatmapPages }, (_, i) => i).map((i) => (
+                <button key={i} onClick={() => setHeatmapPage(i)}
+                  className={`w-7 h-7 text-xs rounded-lg border font-medium transition-colors ${i === heatmapPage ? 'bg-primary text-white border-primary' : 'border-gray-200 hover:bg-gray-100 text-gray-600'}`}>{i + 1}</button>
+              ))}
+              <button disabled={heatmapPage >= totalHeatmapPages - 1} onClick={() => setHeatmapPage((p) => p + 1)}
+                className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 disabled:opacity-30 hover:bg-gray-100 transition-colors font-medium">Next ›</button>
+            </div>
+          </div>
+        )}
       </div>
 
     </div>

@@ -113,6 +113,7 @@ const classDetailInclude = {
           nim: true,
           name: true,
           gender: true,
+          entryYear: true,
           studyProgram: { select: { id: true, code: true, name: true } },
         },
       },
