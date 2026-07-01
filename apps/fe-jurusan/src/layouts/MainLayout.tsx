@@ -2,7 +2,7 @@ import { Sidebar } from '@widyatama/ui';
 import {
   LayoutDashboard, Target, BookOpen, Layers, ClipboardCheck,
   BarChart3, LogOut, GraduationCap, Eye, Users,
-  ChevronDown, Bell, Check, BookMarked, Grid3X3, BookOpenCheck, GitMerge, Shuffle, Scale, Route, BarChart2, UserSearch,
+  ChevronDown, Bell, Check, BookMarked, Grid3X3, BookOpenCheck, GitMerge, Shuffle, Scale, Route, BarChart2, UserSearch, Download,
 } from 'lucide-react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useRef, useEffect } from 'react';
@@ -35,7 +35,14 @@ const menuGroups = [
       { key: 'tracking-matakuliah',  label: 'Tracking Mata Kuliah',  icon: <BookOpen /> },
       { key: 'tracking-mahasiswa',   label: 'Tracking Mahasiswa',    icon: <UserSearch /> },
       { key: 'tracking-cpmk',       label: 'Tracking CPMK',         icon: <BookOpenCheck /> },
+      { key: 'tracking-cpl',        label: 'Tracking CPL',           icon: <Target /> },
       { key: 'distribusi-nilai',     label: 'Distribusi Nilai',       icon: <BarChart2 /> },
+    ],
+  },
+  {
+    group: 'Export',
+    items: [
+      { key: 'exporting', label: 'Export Data (.xlsx)', icon: <Download /> },
     ],
   },
   {

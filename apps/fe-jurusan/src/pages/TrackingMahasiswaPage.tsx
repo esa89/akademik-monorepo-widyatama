@@ -9,6 +9,7 @@ import {
   cpmkCplMappingService, cpmkCourseMappingService, courseCpmkWeightService, courseService,
 } from '@/services/obe.service';
 import { useApp } from '@/contexts/AppContext';
+import { effectiveCourseCount } from '@/constants/scoring';
 import type { Cpl, CpmkDetail, CourseCpmkWeight } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -80,7 +81,7 @@ export default function TrackingMahasiswaPage() {
   const [expandedCourse, setExpandedCourse]   = useState<string | null>(null);
   const [expandedCpl, setExpandedCpl]         = useState<string | null>(null);
   const [thresholds, setThresholds]           = useState<Record<string, number>>(DEFAULT_THRESHOLDS);
-  const [showThresholds, setShowThresholds]   = useState(false);
+  const [showThresholds, setShowThresholds]   = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -393,17 +394,20 @@ export default function TrackingMahasiswaPage() {
     return map;
   }, [cpmkDetailResults, uniqueCpmkIds]);
 
-  // cpmkId → weighted average score (sum of student course scores / total curriculum courses for this CPMK)
+  // cpmkId → weighted average score (sum of student course scores / effective curriculum courses)
+  // MK Agama (MKU62101-05) dihitung 1 slot, bukan 5
   const avgCpmkScores = useMemo(() => {
     const map = new Map<string, number>();
     for (const [cpmkId, details] of cpmkCourseDetails) {
-      const totalCourses = cpmkIdToCourseIds.get(cpmkId)?.length;
-      const denominator  = totalCourses && totalCourses > 0 ? totalCourses : details.length;
+      const currCourseIds = cpmkIdToCourseIds.get(cpmkId);
+      const denominator   = currCourseIds
+        ? effectiveCourseCount(currCourseIds, allCourseInfoMap)
+        : details.length;
       const sum = details.reduce((s, d) => s + d.weightedScore, 0);
-      map.set(cpmkId, Math.round(sum / denominator));
+      map.set(cpmkId, Math.round(sum / (denominator || 1)));
     }
     return map;
-  }, [cpmkCourseDetails, cpmkIdToCourseIds]);
+  }, [cpmkCourseDetails, cpmkIdToCourseIds, allCourseInfoMap]);
 
   // All CPMKs in curriculum (union of all CPL-linked CPMKs + scored CPMKs)
   const allCurriculumCpmkIds = useMemo(() => {

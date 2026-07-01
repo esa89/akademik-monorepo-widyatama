@@ -15,9 +15,11 @@ import { useQuery, useQueries } from '@tanstack/react-query';
 import {
   cplService, cpmkService, subCpmkService, assessmentComponentService,
   academicClassService, cpmkCplMappingService, cpmkCourseMappingService,
-  studentCpmkScoreService, courseService,
+  studentCpmkScoreService, courseService, courseCpmkWeightService,
 } from '@/services/obe.service';
+import type { CourseCpmkWeight } from '@/types';
 import { useApp } from '@/contexts/AppContext';
+import { effectiveCourseCount } from '@/constants/scoring';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type RealCpl    = { id: string; code: string; name: string; category: string };
@@ -535,11 +537,11 @@ export default function DashboardPage() {
   const { selectedCurriculum } = useApp();
   const curriculumId = selectedCurriculum?.id;
 
-  const [selectedAngkatan, setSelectedAngkatan]     = useState<number[]>([]);
+  const [selectedAngkatan, setSelectedAngkatan]     = useState<number[]>([2024, 2025]);
   const [expandedCpl, setExpandedCpl]               = useState<string | null>(null);
   const [heatmapPage, setHeatmapPage]               = useState(0);
   const [thresholds, setThresholds]                 = useState<Record<string, number>>(DEFAULT_THRESHOLDS);
-  const [showThresholds, setShowThresholds]         = useState(false);
+  const [showThresholds, setShowThresholds]         = useState(true);
   const [matrixSemester, setMatrixSemester]         = useState<number | null>(null);
   const [trackingExpanded, setTrackingExpanded]     = useState<string | null>(null);
   const [trackingSemester, setTrackingSemester]     = useState<number | null>(null);
@@ -634,6 +636,57 @@ export default function DashboardPage() {
     })),
   });
 
+  // Moved before allStudentResults to avoid TDZ — allCourseInfoMap is needed inside that memo
+  const uniqueCourses = useMemo(() => {
+    const semesterOf = new Map<string, number>(
+      (allCoursesData?.data ?? []).map((c) => [c.id, c.semester]),
+    );
+    const seen = new Set<string>();
+    const courses: { id: string; code: string; name: string; semester: number }[] = [];
+    for (const cls of realClasses) {
+      if (!seen.has(cls.course.id)) {
+        seen.add(cls.course.id);
+        courses.push({ ...cls.course, semester: semesterOf.get(cls.course.id) ?? 0 });
+      }
+    }
+    return courses.sort((a, b) => a.semester - b.semester || a.code.localeCompare(b.code));
+  }, [realClasses, allCoursesData]);
+
+  const allCourseInfoMap = useMemo(() => {
+    const m = new Map<string, { code: string; name: string }>();
+    courseByIdResults.forEach((q, i) => {
+      const courseId = allCurriculumCourseIds[i];
+      const course = q.data?.data;
+      if (course) m.set(courseId, { code: course.code, name: course.name });
+    });
+    uniqueCourses.forEach((c) => { if (!m.has(c.id)) m.set(c.id, { code: c.code, name: c.name }); });
+    return m;
+  }, [courseByIdResults, allCurriculumCourseIds, uniqueCourses]);
+
+  // Bobot penilaian per course (untuk weighted CPMK score — agar sesuai TrackingMahasiswaPage)
+  const dashCourseWeightResults = useQueries({
+    queries: allCurriculumCourseIds.map((courseId) => ({
+      queryKey: ['course-weights-dash', courseId],
+      queryFn: () => courseCpmkWeightService.getAll({ courseId }),
+      staleTime: 30 * 60 * 1000,
+    })),
+  });
+
+  // courseId → cpmkId → assessmentComponentId → weight
+  const dashCourseWeightMap = useMemo(() => {
+    const map = new Map<string, Map<string, Map<string, number>>>();
+    dashCourseWeightResults.forEach((q, i) => {
+      const courseId = allCurriculumCourseIds[i];
+      const cpmkWMap = new Map<string, Map<string, number>>();
+      (q.data?.data ?? []).forEach((w: CourseCpmkWeight) => {
+        if (!cpmkWMap.has(w.cpmkId)) cpmkWMap.set(w.cpmkId, new Map());
+        cpmkWMap.get(w.cpmkId)!.set(w.assessmentComponentId, w.weight);
+      });
+      map.set(courseId, cpmkWMap);
+    });
+    return map;
+  }, [dashCourseWeightResults, allCurriculumCourseIds]);
+
   // ── Compute per-student CPL achievement ──────────────────────────────────
   const allStudentResults = useMemo((): RealStudentResult[] => {
     if (realCpls.length === 0) return [];
@@ -646,33 +699,50 @@ export default function DashboardPage() {
     }
     if (studentMap.size === 0) return [];
 
-    // studentId → cpmkId → courseId → scores[]
-    const scoresByStudent = new Map<string, Map<string, Map<string, number[]>>>();
-    classScoreResults.forEach((res, i) => {
-      const courseId = realClasses[i]?.course?.id;
-      if (!courseId) return;
+    // studentId → cpmkId → courseId → assessmentComponentId → score
+    // Use s.courseId (OBE course ID) to stay consistent with cpmkIdToCourseIds and weight map
+    const scoresByStudent = new Map<string, Map<string, Map<string, Map<string, number>>>>();
+    for (const res of classScoreResults) {
       for (const s of res.data?.data ?? []) {
         if (!scoresByStudent.has(s.studentId)) scoresByStudent.set(s.studentId, new Map());
         const sm = scoresByStudent.get(s.studentId)!;
         if (!sm.has(s.cpmkId)) sm.set(s.cpmkId, new Map());
         const cm = sm.get(s.cpmkId)!;
-        if (!cm.has(courseId)) cm.set(courseId, []);
-        cm.get(courseId)!.push(s.score);
+        if (!cm.has(s.courseId)) cm.set(s.courseId, new Map());
+        cm.get(s.courseId)!.set(s.assessmentComponentId, s.score);
       }
-    });
+    }
 
     return [...studentMap.values()].map((student) => {
-      const cpmkScoreMap = scoresByStudent.get(student.id) ?? new Map<string, Map<string, number[]>>();
+      const cpmkScoreMap = scoresByStudent.get(student.id) ?? new Map<string, Map<string, Map<string, number>>>();
       const cpmkAvg = new Map<string, number>();
       const cpmkCourseScores: Record<string, Record<string, number>> = {};
       for (const [cpmkId, courseMap] of cpmkScoreMap) {
-        const totalCurrCourses = cpmkIdToCourseIds.get(cpmkId)?.length ?? courseMap.size;
+        const currCourseIds   = cpmkIdToCourseIds.get(cpmkId);
+        const totalCurrCourses = currCourseIds
+          ? effectiveCourseCount(currCourseIds, allCourseInfoMap)
+          : courseMap.size;
         let sum = 0;
         cpmkCourseScores[cpmkId] = {};
-        for (const [courseId, scores] of courseMap) {
-          const courseAvg = scores.reduce((a, b) => a + b, 0) / scores.length;
-          sum += courseAvg;
-          cpmkCourseScores[cpmkId][courseId] = courseAvg;
+        for (const [courseId, compMap] of courseMap) {
+          // Apply component weights — same logic as TrackingMahasiswaPage cpmkCourseDetails
+          const compWeights = dashCourseWeightMap.get(courseId)?.get(cpmkId);
+          let weightedScore: number;
+          if (compWeights && compWeights.size > 0) {
+            let wSum = 0, wTotal = 0;
+            for (const [compId, score] of compMap) {
+              const w = compWeights.get(compId);
+              if (w !== undefined) { wSum += score * w; wTotal += w; }
+            }
+            weightedScore = wTotal > 0
+              ? wSum / wTotal
+              : [...compMap.values()].reduce((a, b) => a + b, 0) / compMap.size;
+          } else {
+            const scores = [...compMap.values()];
+            weightedScore = scores.reduce((a, b) => a + b, 0) / scores.length;
+          }
+          sum += weightedScore;
+          cpmkCourseScores[cpmkId][courseId] = weightedScore;
         }
         cpmkAvg.set(cpmkId, sum / totalCurrCourses);
       }
@@ -690,24 +760,25 @@ export default function DashboardPage() {
           cplAvgPct[cpl.code] = 0;
         } else {
           totalWithData++;
-          // Divide by total linked CPMKs — unscored CPMKs count as 0
-          const avg = scored.reduce((s, id) => s + cpmkAvg.get(id)!, 0) / linked.length;
+          // Divide by scored CPMKs only — penalising unscored courses already happens
+          // at the CPMK level (sum / effectiveCourseCount), so we don't double-penalise
+          // at the CPL level by including unscored CPMKs as 0.
+          const avg = scored.reduce((s, id) => s + cpmkAvg.get(id)!, 0) / scored.length;
           cplAvgPct[cpl.code] = Math.round(avg);
           const threshold = thresholds[cpl.category] ?? 60;
           if (avg < threshold) {
             cplMap[cpl.code] = 'not_met';
-          } else if (scored.length < linked.length) {
-            cplMap[cpl.code] = 'partial';
           } else {
-            cplMap[cpl.code] = 'met';
-            metCount++;
+            // 'partial': threshold met but not all CPMKs have been scored yet
+            cplMap[cpl.code] = scored.length < linked.length ? 'partial' : 'met';
+            metCount++; // count both 'met' and 'partial' toward student's metCount
           }
         }
       }
 
       return { student, angkatan: student.entryYear ?? 0, cplMap, cplAvgPct, cpmkScores: Object.fromEntries(cpmkAvg), cpmkCourseScores, metCount, totalWithData };
     }).sort((a, b) => b.metCount - a.metCount);
-  }, [realCpls, cplToCpmkIds, classDetailResults, classScoreResults, realClasses, cpmkIdToCourseIds, thresholds]);
+  }, [realCpls, cplToCpmkIds, classDetailResults, classScoreResults, cpmkIdToCourseIds, allCourseInfoMap, dashCourseWeightMap, thresholds]);
 
   // ── Filter by angkatan (applied globally to all sections) ───────────────
   const filteredResults = useMemo(() =>
@@ -720,7 +791,7 @@ export default function DashboardPage() {
   const cplStats = useMemo((): RealCplStat[] =>
     realCpls.map((cpl) => {
       const withData = filteredResults.filter((r) => r.cplMap[cpl.code] !== 'no_data');
-      const met      = withData.filter((r) => r.cplMap[cpl.code] === 'met').length;
+      const met      = withData.filter((r) => r.cplMap[cpl.code] === 'met' || r.cplMap[cpl.code] === 'partial').length;
       const total    = withData.length;
       return { ...cpl, pct: total > 0 ? Math.round((met / total) * 100) : 0, met, total };
     }),
@@ -752,32 +823,6 @@ export default function DashboardPage() {
     for (const r of filteredResults) map.set(r.student.id, r);
     return map;
   }, [filteredResults]);
-
-  const uniqueCourses = useMemo(() => {
-    const semesterOf = new Map<string, number>(
-      (allCoursesData?.data ?? []).map((c) => [c.id, c.semester]),
-    );
-    const seen = new Set<string>();
-    const courses: { id: string; code: string; name: string; semester: number }[] = [];
-    for (const cls of realClasses) {
-      if (!seen.has(cls.course.id)) {
-        seen.add(cls.course.id);
-        courses.push({ ...cls.course, semester: semesterOf.get(cls.course.id) ?? 0 });
-      }
-    }
-    return courses.sort((a, b) => a.semester - b.semester || a.code.localeCompare(b.code));
-  }, [realClasses, allCoursesData]);
-
-  const allCourseInfoMap = useMemo(() => {
-    const m = new Map<string, { code: string; name: string }>();
-    courseByIdResults.forEach((q, i) => {
-      const courseId = allCurriculumCourseIds[i];
-      const course = q.data?.data;
-      if (course) m.set(courseId, { code: course.code, name: course.name });
-    });
-    uniqueCourses.forEach((c) => { if (!m.has(c.id)) m.set(c.id, { code: c.code, name: c.name }); });
-    return m;
-  }, [courseByIdResults, allCurriculumCourseIds, uniqueCourses]);
 
   // Available semesters from fetched course data (for the dropdown)
   const availableMatrixSemesters = useMemo(() => {
@@ -892,6 +937,17 @@ export default function DashboardPage() {
     return result;
   }, [classScoreResults, realClasses, studentResultMap, cpmkThresholdMap]);
 
+  // ── Unique active students (angkatan 2024 & 2025 only, counted from class details) ──
+  const activeStudentCount = useMemo(() => {
+    const ids = new Set<string>();
+    for (const res of classDetailResults) {
+      for (const { student } of res.data?.data?.students ?? []) {
+        if (student.entryYear === 2024 || student.entryYear === 2025) ids.add(student.id);
+      }
+    }
+    return ids.size;
+  }, [classDetailResults]);
+
   // ── Summary stats ─────────────────────────────────────────────────────────
   const totalFiltered   = filteredResults.length;
   const studentsAllMet  = filteredResults.filter((r) => r.totalWithData > 0 && r.metCount === realCpls.length).length;
@@ -965,8 +1021,8 @@ export default function DashboardPage() {
             <div className="p-2.5 bg-blue-50 rounded-xl shrink-0"><Users size={18} className="text-blue-600" /></div>
             <div>
               <p className="text-xs text-gray-500 leading-tight">Total Mahasiswa</p>
-              <p className="text-2xl font-bold text-gray-900 mt-0.5">{realStudents > 0 ? realStudents : '…'}</p>
-              <p className="text-[11px] text-gray-400 mt-0.5 leading-tight">{realClasses.length} kelas · {activeClasses} aktif</p>
+              <p className="text-2xl font-bold text-gray-900 mt-0.5">{activeStudentCount > 0 ? activeStudentCount : '…'}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5 leading-tight">Angkatan 2024 & 2025 · unik</p>
             </div>
           </div>
           {[

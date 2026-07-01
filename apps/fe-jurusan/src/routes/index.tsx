@@ -18,7 +18,9 @@ import TrackingObePage from '@/pages/TrackingObePage';
 import TrackingMatakuliahPage from '@/pages/TrackingMatakuliahPage';
 import TrackingMahasiswaPage from '@/pages/TrackingMahasiswaPage';
 import TrackingCpmkPage from '@/pages/TrackingCpmkPage';
+import TrackingCplPage from '@/pages/TrackingCplPage';
 import DistribusiNilaiPage from '@/pages/DistribusiNilaiPage';
+import ExportingPage from '@/pages/ExportingPage';
 import LoginPage from '@/pages/auth/LoginPage';
 import CallbackPage from '@/pages/auth/CallbackPage';
 import { ProtectedRoute, PublicRoute } from '@/components/auth/ProtectedRoute';
@@ -49,7 +51,9 @@ export const router = createBrowserRouter([
       { path: 'tracking-matakuliah', element: <TrackingMatakuliahPage /> },
       { path: 'tracking-mahasiswa', element: <TrackingMahasiswaPage /> },
       { path: 'tracking-cpmk',      element: <TrackingCpmkPage /> },
+      { path: 'tracking-cpl',       element: <TrackingCplPage /> },
       { path: 'distribusi-nilai', element: <DistribusiNilaiPage /> },
+      { path: 'exporting',        element: <ExportingPage /> },
     ],
   },
 ]);

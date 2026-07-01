@@ -9,6 +9,7 @@ import {
   cpmkCourseMappingService, subCpmkService, courseService,
 } from '@/services/obe.service';
 import { useApp } from '@/contexts/AppContext';
+import { effectiveCourseCount } from '@/constants/scoring';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -91,7 +92,7 @@ export default function TrackingCpmkPage() {
   const [studentSearch,           setStudentSearch         ] = useState('');
   const [selectedAngkatanFilter,  setSelectedAngkatanFilter] = useState<number[]>([]);
   const [thresholds,              setThresholds            ] = useState<Record<string, number>>(DEFAULT_THRESHOLDS);
-  const [showThresholds,          setShowThresholds        ] = useState(false);
+  const [showThresholds,          setShowThresholds        ] = useState(true);
 
   // ── Base queries ───────────────────────────────────────────────────────────
   const { data: cpmkMkMatrix } = useQuery({
@@ -277,10 +278,13 @@ export default function TrackingCpmkPage() {
   const cpmkListStats = useMemo(() => {
     const stats = new Map<string, { totalStudents: number; avgScore: number; passRate: number; scoredMk: number }>();
     for (const [cpmkId, courseMap] of cpmkCourseStudentScores) {
-      const totalCurr   = cpmkIdToCourseIds.get(cpmkId)?.length ?? courseMap.size;
-      const cpmkRow     = allCpmkRows.find((c) => c.id === cpmkId);
-      const threshold   = getCpmkThreshold(cpmkRow);
-      const allStuds    = new Set<string>();
+      const currCourseIds = cpmkIdToCourseIds.get(cpmkId);
+      const totalCurr     = currCourseIds
+        ? effectiveCourseCount(currCourseIds, courseInfoMap)
+        : courseMap.size;
+      const cpmkRow    = allCpmkRows.find((c) => c.id === cpmkId);
+      const threshold  = getCpmkThreshold(cpmkRow);
+      const allStuds   = new Set<string>();
       courseMap.forEach((sm) => sm.forEach((_, sid) => allStuds.add(sid)));
       let totalScore = 0, pass = 0;
       for (const sid of allStuds) {
@@ -289,7 +293,7 @@ export default function TrackingCpmkPage() {
           const sc = sm.get(sid);
           if (sc) sum += sc.reduce((a, b) => a + b, 0) / sc.length;
         }
-        const adj = sum / totalCurr;
+        const adj = sum / (totalCurr || 1);
         totalScore += adj;
         if (adj >= threshold) pass++;
       }
@@ -302,7 +306,7 @@ export default function TrackingCpmkPage() {
       });
     }
     return stats;
-  }, [cpmkCourseStudentScores, cpmkIdToCourseIds, allCpmkRows, getCpmkThreshold]);
+  }, [cpmkCourseStudentScores, cpmkIdToCourseIds, allCpmkRows, getCpmkThreshold, courseInfoMap]);
 
   // ── Selected CPMK threshold ────────────────────────────────────────────────
   const selectedCpmkRow    = selectedCpmkId ? allCpmkRows.find((c) => c.id === selectedCpmkId) : null;
@@ -340,8 +344,11 @@ export default function TrackingCpmkPage() {
   // ── Selected CPMK per-student scores ──────────────────────────────────────
   const selectedStudentScores = useMemo(() => {
     if (!selectedCpmkId) return [];
-    const courseMap   = cpmkCourseStudentScores.get(selectedCpmkId) ?? new Map();
-    const totalCurr   = cpmkIdToCourseIds.get(selectedCpmkId)?.length ?? courseMap.size;
+    const courseMap     = cpmkCourseStudentScores.get(selectedCpmkId) ?? new Map();
+    const currCourseIds = cpmkIdToCourseIds.get(selectedCpmkId);
+    const totalCurr     = currCourseIds
+      ? effectiveCourseCount(currCourseIds, courseInfoMap)
+      : courseMap.size;
     const allStuds    = new Set<string>();
     courseMap.forEach((sm) => sm.forEach((_, sid) => allStuds.add(sid)));
 
@@ -368,7 +375,7 @@ export default function TrackingCpmkPage() {
         passed: adjScore >= selectedThreshold,
       };
     }).sort((a, b) => b.adjScore - a.adjScore);
-  }, [selectedCpmkId, cpmkCourseStudentScores, studentInfoMap, cpmkIdToCourseIds, selectedThreshold]);
+  }, [selectedCpmkId, cpmkCourseStudentScores, studentInfoMap, cpmkIdToCourseIds, courseInfoMap, selectedThreshold]);
 
   // ── Angkatan filter ────────────────────────────────────────────────────────
   const uniqueAngkatan = useMemo(() => {
