@@ -103,15 +103,15 @@ jobs:
           port:            ${{ secrets.VPS_PORT }}
           username:        root
           key:             ${{ secrets.VPS_SSH_KEY }}
-          command_timeout: 30m
+          command_timeout: 60m
           script: |
             cd /root/sytama
 
             # Login ke GHCR
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # Pull image terbaru — satu per satu agar tidak berebut bandwidth
-            docker compose -f compose.prod.yml --env-file .env pull --no-parallel
+            # Pull image terbaru
+            docker compose -f compose.prod.yml --env-file .env pull
 
             # Restart service
             docker compose -f compose.prod.yml --env-file .env up -d --remove-orphans
